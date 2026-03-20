@@ -1355,26 +1355,28 @@ export default function App() {
         overflow:"hidden",
         fontFamily:"'DM Sans',sans-serif",
       }}>
-        {/* Header — drag region in Tauri; spans full width so you can grab anywhere across the top */}
-        <div data-tauri-drag-region style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding: IS_TAURI ? "36px 20px 0" : "18px 20px 0" }}>
-          {IS_TAURI
-            ? <div style={{ width: 68 }} /> /* spacer so button stays right; traffic lights occupy this zone */
-            : <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                <div style={{
-                  width:28, height:28, borderRadius:"50%",
-                  background:"linear-gradient(135deg,#c9a66b,#a07d4a)",
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#08080c"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
-                </div>
-                <span style={{ fontFamily:"'Playfair Display',serif", fontSize:16, fontWeight:600, letterSpacing:".04em", color:T.text }}>
-                  Overflow
-                </span>
-                <span style={{ fontFamily:"'DM Mono',monospace", fontSize:10, color:T.text45, letterSpacing:".04em" }}>
-                  v{__APP_VERSION__}
-                </span>
-              </div>
-          }
+        {/* Dedicated drag strip in Tauri — full width, no content, always grabbable */}
+        {IS_TAURI && (
+          <div data-tauri-drag-region style={{ height:36, width:"100%", flexShrink:0 }} />
+        )}
+
+        {/* Header row — logo left, controls right */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding: IS_TAURI ? "0 20px 6px" : "18px 20px 0" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <div style={{
+              width:28, height:28, borderRadius:"50%",
+              background:"linear-gradient(135deg,#c9a66b,#a07d4a)",
+              display:"flex", alignItems:"center", justifyContent:"center",
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#08080c"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+            </div>
+            <span style={{ fontFamily:"'Playfair Display',serif", fontSize:16, fontWeight:600, letterSpacing:".04em", color:T.text }}>
+              Overflow
+            </span>
+            <span style={{ fontFamily:"'DM Mono',monospace", fontSize:10, color:T.text45, letterSpacing:".04em" }}>
+              v{__APP_VERSION__}
+            </span>
+          </div>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
             {connected && (
               <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, color:T.gold, letterSpacing:".04em" }}>
