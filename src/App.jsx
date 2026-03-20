@@ -529,9 +529,187 @@ function TrackList({ tracks, currentTrackIndex, onSelectTrack }) {
 }
 
 /* =========================================================================
+   SEARCH PALETTE
+   - Triggered by "/" key or search icon in header
+   - Filters by title or artist, shows top-10 results
+   - Arrow keys navigate, Enter/click selects → jumpTo index
+   ========================================================================= */
+function SearchPalette({ albums, onSelect, onClose }) {
+  const [q, setQ] = useState("");
+  const [hi, setHi] = useState(0);
+  const inputRef = useRef(null);
+  const listRef = useRef(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const results = useMemo(() => {
+    if (!q.trim()) return [];
+    const lq = q.toLowerCase();
+    return albums
+      .map((a, i) => ({ ...a, _idx: i }))
+      .filter(a =>
+        a.title.toLowerCase().includes(lq) ||
+        a.artist.toLowerCase().includes(lq)
+      )
+      .slice(0, 10);
+  }, [albums, q]);
+
+  useEffect(() => { setHi(0); }, [results.length]);
+
+  // Scroll highlighted item into view
+  useEffect(() => {
+    const el = listRef.current?.children[hi];
+    el?.scrollIntoView({ block: "nearest" });
+  }, [hi]);
+
+  function handleKeyDown(e) {
+    if (e.key === "Escape") { onClose(); return; }
+    if (e.key === "ArrowDown") { e.preventDefault(); setHi(h => Math.min(h + 1, results.length - 1)); return; }
+    if (e.key === "ArrowUp")   { e.preventDefault(); setHi(h => Math.max(h - 1, 0)); return; }
+    if (e.key === "Enter" && results[hi]) { onSelect(results[hi]._idx); }
+  }
+
+  const rowS = (active) => ({
+    display: "flex", alignItems: "center", gap: 12,
+    padding: "9px 14px", cursor: "pointer",
+    background: active ? "rgba(201,166,107,.1)" : "transparent",
+    borderLeft: `2px solid ${active ? T.gold : "transparent"}`,
+    transition: "background .08s",
+  });
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 10002,
+        display: "flex", alignItems: "flex-start", justifyContent: "center",
+        paddingTop: IS_TAURI ? 88 : 72,
+        background: "rgba(0,0,0,.55)",
+      }}
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search albums"
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: "min(540px, 92vw)",
+          background: T.surface,
+          border: "1px solid rgba(255,255,255,.08)",
+          borderRadius: 12,
+          overflow: "hidden",
+          boxShadow: "0 24px 64px rgba(0,0,0,.7)",
+        }}
+      >
+        {/* Input row */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ color: T.text45, flexShrink: 0 }}>
+            <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+          </svg>
+          <input
+            ref={inputRef}
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Search albums or artists…"
+            style={{
+              flex: 1, background: "none", border: "none", outline: "none",
+              color: T.text, fontFamily: "'DM Sans',sans-serif", fontSize: 15,
+              caretColor: T.gold,
+            }}
+          />
+          {q && (
+            <button
+              onClick={() => setQ("")}
+              style={{ background: "none", border: "none", cursor: "pointer", color: T.text45, padding: 2, lineHeight: 1 }}
+              aria-label="Clear search"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            </button>
+          )}
+          <kbd style={{
+            flexShrink: 0, fontFamily: "'DM Mono', monospace", fontSize: 11,
+            color: T.text45, background: "rgba(255,255,255,.05)",
+            border: "1px solid rgba(255,255,255,.1)", borderRadius: 4,
+            padding: "2px 6px",
+          }}>Esc</kbd>
+        </div>
+
+        {/* Results */}
+        {results.length > 0 && (
+          <div
+            ref={listRef}
+            style={{ maxHeight: 360, overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,.1) transparent" }}
+          >
+            {results.map((a, i) => (
+              <div
+                key={a._idx}
+                style={rowS(i === hi)}
+                onClick={() => onSelect(a._idx)}
+                onMouseEnter={() => setHi(i)}
+              >
+                {/* Mini art swatch */}
+                <div style={{ width: 36, height: 36, borderRadius: 4, overflow: "hidden", flexShrink: 0 }}>
+                  <AlbumArt album={a} size={36} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontFamily: "'DM Sans',sans-serif", fontSize: 14,
+                    color: T.text, fontWeight: 500,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>
+                    {/* Highlight matching chars */}
+                    {a.title}
+                  </div>
+                  <div style={{
+                    fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: T.text55, marginTop: 1,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>
+                    {a.artist}{a.year ? ` · ${a.year}` : ""}
+                  </div>
+                </div>
+                {i === hi && (
+                  <kbd style={{
+                    fontFamily: "'DM Mono', monospace", fontSize: 10, color: T.gold,
+                    background: "rgba(201,166,107,.08)", border: "1px solid rgba(201,166,107,.2)",
+                    borderRadius: 3, padding: "1px 5px", flexShrink: 0,
+                  }}>↵</kbd>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Empty state */}
+        {q.trim() && results.length === 0 && (
+          <div style={{
+            padding: "24px 16px", textAlign: "center",
+            fontFamily: "'DM Sans',sans-serif", fontSize: 14, color: T.text45,
+          }}>
+            No albums matching "{q}"
+          </div>
+        )}
+
+        {/* Hint when empty */}
+        {!q && (
+          <div style={{
+            padding: "12px 16px",
+            fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: T.text45,
+            display: "flex", gap: 16,
+          }}>
+            <span><kbd style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: T.text45, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 3, padding: "1px 5px" }}>↑↓</kbd> navigate</span>
+            <span><kbd style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: T.text45, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 3, padding: "1px 5px" }}>↵</kbd> jump to album</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
    ALPHABET SCRUBBER
    ========================================================================= */
-function AlphabetScrubber({ letters, letterMap, jumpTo }) {
+function AlphabetScrubber({ letters, letterMap, jumpTo, onSearchOpen }) {
   const [active, setActive] = useState(null);
   const indicatorRef = useRef(null);
   const stripRef = useRef(null);
@@ -591,41 +769,62 @@ function AlphabetScrubber({ letters, letterMap, jumpTo }) {
 
       {/* Strip */}
       <div
-        ref={stripRef}
-        role="listbox"
-        aria-label="Jump to letter"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onEnd}
-        onPointerCancel={onEnd}
         style={{
           position: "fixed", right: 2, top: "50%", transform: "translateY(-50%)",
           display: "flex", flexDirection: "column", alignItems: "center",
           padding: "6px 3px",
           background: active ? "rgba(14,14,20,.7)" : "transparent",
           borderRadius: 12, zIndex: 10000,
-          userSelect: "none", touchAction: "none", cursor: "default",
           transition: "background .15s",
         }}
       >
-        {letters.map(l => (
-          <div
-            key={l}
-            role="option"
-            aria-selected={active === l}
-            aria-label={`Jump to ${l}`}
-            style={{
-              width: 18, height: itemH,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontFamily: "'DM Sans',sans-serif",
-              fontSize: Math.min(11, itemH - 1),
-              fontWeight: active === l ? 700 : 400,
-              color: active === l ? T.gold : T.text45,
-              transition: "color .1s",
-              lineHeight: 1,
-            }}
-          >{l}</div>
-        ))}
+        {/* Search icon */}
+        <button
+          onClick={onSearchOpen}
+          aria-label="Search albums"
+          style={{
+            background: "none", border: "none", cursor: "pointer",
+            color: T.text45, padding: "3px 0", marginBottom: 4,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: 18, lineHeight: 1,
+            transition: "color .15s",
+          }}
+          onMouseEnter={e => e.currentTarget.style.color = T.gold}
+          onMouseLeave={e => e.currentTarget.style.color = T.text45}
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+          </svg>
+        </button>
+        <div
+          ref={stripRef}
+          role="listbox"
+          aria-label="Jump to letter"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onEnd}
+          onPointerCancel={onEnd}
+          style={{ display: "flex", flexDirection: "column", alignItems: "center", userSelect: "none", touchAction: "none", cursor: "default" }}
+        >
+          {letters.map(l => (
+            <div
+              key={l}
+              role="option"
+              aria-selected={active === l}
+              aria-label={`Jump to ${l}`}
+              style={{
+                width: 18, height: itemH,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontFamily: "'DM Sans',sans-serif",
+                fontSize: Math.min(11, itemH - 1),
+                fontWeight: active === l ? 700 : 400,
+                color: active === l ? T.gold : T.text45,
+                transition: "color .1s",
+                lineHeight: 1,
+              }}
+            >{l}</div>
+          ))}
+        </div>
       </div>
     </>
   );
@@ -939,6 +1138,7 @@ export default function App() {
   const [trackIdx, setTrackIdx] = useState(0);
   const [progress, setProgress] = useState(0);
   const [showPlex, setShowPlex] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
 
   // Audio element for real playback
   const audioRef = useRef(null);
@@ -1077,6 +1277,18 @@ export default function App() {
     }).catch(() => {});
   }, [track, album]);
 
+  // "/" key opens search
+  useEffect(() => {
+    const h = (e) => {
+      if (e.key === "/" && !showSearch && !showPlex && document.activeElement?.tagName !== "INPUT") {
+        e.preventDefault();
+        setShowSearch(true);
+      }
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [showSearch, showPlex]);
+
   // Reset on album change
   const prevSettled = useRef(settled);
   useEffect(() => {
@@ -1158,6 +1370,9 @@ export default function App() {
                 <span style={{ fontFamily:"'Playfair Display',serif", fontSize:16, fontWeight:600, letterSpacing:".04em", color:T.text }}>
                   Overflow
                 </span>
+                <span style={{ fontFamily:"'DM Mono',monospace", fontSize:10, color:T.text45, letterSpacing:".04em" }}>
+                  v{__APP_VERSION__}
+                </span>
               </div>
           }
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
@@ -1227,7 +1442,15 @@ export default function App() {
         </div>
 
         {connected && letters.length > 1 && (
-          <AlphabetScrubber letters={letters} letterMap={letterMap} jumpTo={jumpTo} />
+          <AlphabetScrubber letters={letters} letterMap={letterMap} jumpTo={jumpTo} onSearchOpen={() => setShowSearch(true)} />
+        )}
+
+        {showSearch && albums.length > 0 && (
+          <SearchPalette
+            albums={albums}
+            onSelect={idx => { jumpTo(idx); setShowSearch(false); }}
+            onClose={() => setShowSearch(false)}
+          />
         )}
 
         <PlexConfig
