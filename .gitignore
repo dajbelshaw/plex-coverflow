@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.DS_Store
+
+# Markdown: ignore all except README and CHANGELOG
+*.md
+!README.md
+!CHANGELOG.md
