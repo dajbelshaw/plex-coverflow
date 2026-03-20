@@ -54,7 +54,10 @@ pub fn run() {
 
             TrayIconBuilder::with_id("main")
                 .tooltip("Overflow")
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon({
+                    const RGBA: &[u8] = include_bytes!("../icons/tray.rgba");
+                    tauri::image::Image::new(RGBA, 32, 32)
+                })
                 .icon_as_template(true)
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -88,8 +91,8 @@ pub fn run() {
 
             // ── Media key shortcuts ───────────────────────────────────────
             let handle = app.handle().clone();
-            app.global_shortcut().on_shortcuts(
-                ["MediaPlayPause", "MediaNextTrack", "MediaPreviousTrack"],
+            if let Err(e) = app.global_shortcut().on_shortcuts(
+                ["MediaPlayPause", "MediaTrackNext", "MediaTrackPrevious"],
                 move |_app, shortcut, event| {
                     if event.state == ShortcutState::Pressed {
                         let s = shortcut.to_string();
@@ -107,7 +110,9 @@ pub fn run() {
                         }
                     }
                 },
-            )?;
+            ) {
+                eprintln!("[overflow] Could not register media keys: {e}");
+            }
 
             Ok(())
         })

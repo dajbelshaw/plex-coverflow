@@ -1,6 +1,6 @@
 [package]
 name = "overflow"
-version = "0.1.0"
+version = "0.2.0"
 description = "Cover Flow music player for Plex"
 authors = ["Doug Belshaw"]
 license = "AGPL-3.0"
@@ -15,7 +15,7 @@ name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.5.6" }
+tauri-build = { version = "2.5.6", features = [] }
 
 [dependencies]
 serde_json = "1.0"
