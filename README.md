@@ -34,5 +34,3 @@ Your credentials are saved to `localStorage` and reconnect automatically on next
 ## Dev notes
 
 The app runs against a local Plex server over HTTP via a Vite dev proxy (`/plex-proxy`), which sidesteps browser cross-origin restrictions without needing CORS changes on the server.
-
-See `CLAUDE.md` for architecture details and future directions.
