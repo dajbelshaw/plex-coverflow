@@ -3,8 +3,11 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 /* =========================================================================
    PLEX API HELPERS
    ========================================================================= */
-// Build a proxy URL that works for both fetch() and <img src> — no custom headers needed
+// In Tauri the WebView can reach local servers directly; proxy only needed in browser dev
+const IS_TAURI = typeof window !== "undefined" && !!window.__TAURI__;
+
 function plexProxyUrl(serverBase, path) {
+  if (IS_TAURI) return `${serverBase}${path}`;
   return `/plex-proxy/${encodeURIComponent(serverBase)}${path}`;
 }
 
@@ -874,7 +877,7 @@ export default function App() {
   const [connected, setConnected] = useState(false);
 
   // Albums: start with mock, replaced on successful Plex connection
-  const [albums, setAlbums] = useState(ALBUMS);
+  const [albums, setAlbums] = useState([]);
   // Tracks keyed by album id/ratingKey — loaded lazily per album
   const [plexTracks, setPlexTracks] = useState({});
 
@@ -999,6 +1002,38 @@ export default function App() {
     return () => clearInterval(iv);
   }, [playing, tracks.length, connected]);
 
+  // Tauri: media key events + keep tray now-playing in sync
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.__TAURI__) return;
+    const { listen } = window.__TAURI__.event;
+    const { invoke } = window.__TAURI__.core;
+
+    const unsubs = Promise.all([
+      listen("media-play-pause", () => setPlaying(p => !p)),
+      listen("media-next", () => {
+        setTrackIdx(ti => {
+          if (ti + 1 >= tracks.length) { setPlaying(false); return 0; }
+          return ti + 1;
+        });
+      }),
+      listen("media-prev", () => setTrackIdx(ti => Math.max(0, ti - 1))),
+    ]);
+
+    return () => { unsubs.then(fns => fns.forEach(f => f())); };
+  }, [tracks.length]);
+
+  // Tauri: update tray tooltip + menu when track changes
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.__TAURI__ || !track) return;
+    const { invoke } = window.__TAURI__.core;
+    const name = typeof track === "string" ? track : track.title;
+    invoke("update_now_playing", {
+      track: name || "",
+      artist: album?.artist || "",
+      album: album?.title || "",
+    }).catch(() => {});
+  }, [track, album]);
+
   // Reset on album change
   const prevSettled = useRef(settled);
   useEffect(() => {
@@ -1097,9 +1132,17 @@ export default function App() {
           </div>
         </div>
 
-        <div style={{ textAlign:"center", padding:"14px 0 2px", fontFamily:"'DM Sans',sans-serif", fontSize:11, color:"rgba(232,228,223,.2)", letterSpacing:".1em", textTransform:"uppercase" }}>
-          {settled + 1} / {albums.length}
-        </div>
+        {albums.length === 0 && !connected && (
+          <div style={{ textAlign:"center", color:"rgba(232,228,223,.35)", fontFamily:"'DM Sans',sans-serif", fontSize:15, padding:"80px 0" }}>
+            Connect Plex to browse your library
+          </div>
+        )}
+
+        {albums.length > 0 && (
+          <div style={{ textAlign:"center", padding:"14px 0 2px", fontFamily:"'DM Sans',sans-serif", fontSize:11, color:"rgba(232,228,223,.2)", letterSpacing:".1em", textTransform:"uppercase" }}>
+            {settled + 1} / {albums.length}
+          </div>
+        )}
 
         <CoverFlow
           albums={albums} renderPos={renderPos} settled={settled}
