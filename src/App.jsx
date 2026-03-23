@@ -425,7 +425,7 @@ function CoverFlow({ albums, renderPos, settled, onWheel, onPointerDown, onPoint
 /* =========================================================================
    PLAYER CONTROLS
    ========================================================================= */
-function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, currentTrack, album, progress, onSeek }) {
+function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onRandomAlbum, currentTrack, album, progress, onSeek }) {
   const trackName = typeof currentTrack === "string" ? currentTrack : currentTrack?.title;
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10, padding:"0 40px" }}>
@@ -449,7 +449,7 @@ function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, currentTrack, 
         />
       </div>
 
-      <div style={{ display:"flex", alignItems:"center", gap:32, marginTop:4 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:24, marginTop:4 }}>
         <button onClick={onPrev} style={bS} aria-label="Previous track">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
         </button>
@@ -460,6 +460,9 @@ function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, currentTrack, 
         </button>
         <button onClick={onNext} style={bS} aria-label="Next track">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+        </button>
+        <button onClick={onRandomAlbum} style={bS} aria-label="Random album">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
         </button>
       </div>
     </div>
@@ -831,6 +834,82 @@ function AlphabetScrubber({ letters, letterMap, jumpTo, onSearchOpen }) {
 }
 
 /* =========================================================================
+   SETTINGS POPOVER
+   ========================================================================= */
+function SettingsPopover({ onClose, continuousPlay, onToggleContinuous, nextAlbumMode, onChangeNextMode }) {
+  const ref = useRef(null);
+
+  // Click-outside dismissal
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [onClose]);
+
+  const rowS = { display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0" };
+  const labelS = { fontFamily:"'DM Sans',sans-serif", fontSize:13, color:T.text65 };
+  const dividerS = { borderTop:"1px solid rgba(255,255,255,.07)", margin:"2px 0" };
+
+  return (
+    <div ref={ref} style={{
+      position:"absolute", top:"calc(100% + 8px)", right:0, zIndex:200,
+      width:240, background:"rgba(10,10,14,0.97)", backdropFilter:"blur(24px)",
+      border:"1px solid rgba(255,255,255,.1)", borderRadius:12,
+      padding:"8px 14px 12px", boxShadow:"0 8px 32px rgba(0,0,0,.6)",
+    }}>
+      <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:11, fontWeight:600,
+        textTransform:"uppercase", letterSpacing:".08em", color:T.text45, paddingBottom:6 }}>
+        Playback
+      </div>
+
+      {/* Continuous Play toggle */}
+      <div style={rowS}>
+        <span style={labelS}>Continuous play</span>
+        <button
+          onClick={onToggleContinuous}
+          aria-pressed={continuousPlay}
+          style={{
+            width:36, height:20, borderRadius:10, border:"none", cursor:"pointer",
+            background: continuousPlay ? T.gold : "rgba(255,255,255,.12)",
+            position:"relative", transition:"background .2s", flexShrink:0,
+          }}
+        >
+          <span style={{
+            position:"absolute", top:2, left: continuousPlay ? 18 : 2,
+            width:16, height:16, borderRadius:"50%", background:"#fff",
+            transition:"left .2s", display:"block",
+          }} />
+        </button>
+      </div>
+
+      {/* After Album Ends — only shown when continuous play is on */}
+      {continuousPlay && (
+        <>
+          <div style={dividerS} />
+          <div style={{ ...rowS, flexDirection:"column", alignItems:"flex-start", gap:8 }}>
+            <span style={labelS}>After album ends</span>
+            <div style={{ display:"flex", gap:6 }}>
+              {["sequential", "random"].map(mode => (
+                <button key={mode} onClick={() => onChangeNextMode(mode)} style={{
+                  fontFamily:"'DM Sans',sans-serif", fontSize:12, cursor:"pointer",
+                  padding:"4px 12px", borderRadius:20,
+                  background: nextAlbumMode === mode ? "rgba(201,166,107,.15)" : "rgba(255,255,255,.05)",
+                  border: nextAlbumMode === mode ? `1px solid rgba(201,166,107,.4)` : "1px solid rgba(255,255,255,.1)",
+                  color: nextAlbumMode === mode ? T.gold : T.text55,
+                  transition:"all .15s",
+                }}>
+                  {mode === "sequential" ? "Next" : "Random"}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
    PLEX CONFIG MODAL
    ========================================================================= */
 function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
@@ -1141,6 +1220,13 @@ export default function App() {
   const [showSearch, setShowSearch] = useState(false);
   const [mediaKeysError, setMediaKeysError] = useState(false);
 
+  // Settings (persisted to localStorage)
+  const [continuousPlay, setContinuousPlay] = useState(() => localStorage.getItem("overflow_continuous") === "true");
+  const [nextAlbumMode, setNextAlbumMode] = useState(() => localStorage.getItem("overflow_nextmode") || "sequential");
+  const [showSettings, setShowSettings] = useState(false);
+  // Flag: set before calling jumpTo during continuous advance, cleared in album-change effect
+  const continuousAdvancing = useRef(false);
+
   // Audio element for real playback
   const audioRef = useRef(null);
 
@@ -1161,6 +1247,23 @@ export default function App() {
     ? (plexTracks[album?.id] || [])
     : (TRACKS[album?.id] || []);
   const track = tracks[trackIdx] || null;
+
+  // Persist settings changes
+  useEffect(() => { localStorage.setItem("overflow_continuous", String(continuousPlay)); }, [continuousPlay]);
+  useEffect(() => { localStorage.setItem("overflow_nextmode", nextAlbumMode); }, [nextAlbumMode]);
+
+  // Advance to next or random album (for continuous play)
+  const advanceToNextAlbum = useCallback(() => {
+    if (albums.length <= 1) { setPlaying(false); return; }
+    continuousAdvancing.current = true;
+    let nextIdx;
+    if (nextAlbumMode === "random") {
+      do { nextIdx = Math.floor(Math.random() * albums.length); } while (nextIdx === settled && albums.length > 1);
+    } else {
+      nextIdx = (settled + 1) % albums.length;
+    }
+    jumpTo(nextIdx);
+  }, [albums.length, settled, nextAlbumMode, jumpTo]);
 
   // Random album jump: fires once after albums first load (or reconnect)
   const randomJumpPending = useRef(false);
@@ -1204,11 +1307,14 @@ export default function App() {
     if (!audio) return;
     audio.onended = () => {
       setTrackIdx(ti => {
-        if (ti + 1 >= tracks.length) { setPlaying(false); return 0; }
+        if (ti + 1 >= tracks.length) {
+          if (continuousPlay) { advanceToNextAlbum(); return 0; }
+          setPlaying(false); return 0;
+        }
         return ti + 1;
       });
     };
-  }, [tracks.length]);
+  }, [tracks.length, continuousPlay, advanceToNextAlbum]);
 
   // Clamp trackIdx when tracks change (e.g. album switch)
   useEffect(() => {
@@ -1249,7 +1355,10 @@ export default function App() {
       setProgress(p => {
         if (p >= 100) {
           setTrackIdx(ti => {
-            if (ti + 1 >= tracks.length) { setPlaying(false); return 0; }
+            if (ti + 1 >= tracks.length) {
+              if (continuousPlay) { advanceToNextAlbum(); return 0; }
+              setPlaying(false); return 0;
+            }
             return ti + 1;
           });
           return 0;
@@ -1258,7 +1367,7 @@ export default function App() {
       });
     }, 150);
     return () => clearInterval(iv);
-  }, [playing, tracks.length, connected]);
+  }, [playing, tracks.length, connected, continuousPlay, advanceToNextAlbum]);
 
   // Tauri: media key events
   useEffect(() => {
@@ -1267,14 +1376,17 @@ export default function App() {
       listen("media-play-pause", () => setPlaying(p => !p)),
       listen("media-next", () => {
         setTrackIdx(ti => {
-          if (ti + 1 >= tracks.length) { setPlaying(false); return 0; }
+          if (ti + 1 >= tracks.length) {
+            if (continuousPlay) { advanceToNextAlbum(); return 0; }
+            setPlaying(false); return 0;
+          }
           return ti + 1;
         });
       }),
       listen("media-prev", () => setTrackIdx(ti => Math.max(0, ti - 1))),
     ]);
     return () => { unsubs.then(fns => fns.forEach(f => f())); };
-  }, [tracks.length]);
+  }, [tracks.length, continuousPlay, advanceToNextAlbum]);
 
   // Tauri: surface media key registration failure with instructions
   useEffect(() => {
@@ -1296,27 +1408,38 @@ export default function App() {
     }).catch(() => {});
   }, [track, album]);
 
-  // "/" key opens search
+  // Keyboard shortcuts: "/" opens search, "r" jumps to random album
   useEffect(() => {
     const h = (e) => {
-      if (e.key === "/" && !showSearch && !showPlex && document.activeElement?.tagName !== "INPUT") {
+      if (document.activeElement?.tagName === "INPUT") return;
+      if (e.key === "/" && !showSearch && !showPlex) {
         e.preventDefault();
         setShowSearch(true);
+      }
+      if (e.key === "r" && albums.length > 1 && !showSearch && !showPlex) {
+        let idx;
+        do { idx = Math.floor(Math.random() * albums.length); } while (idx === settled && albums.length > 1);
+        jumpTo(idx);
       }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [showSearch, showPlex]);
+  }, [showSearch, showPlex, albums.length, settled, jumpTo]);
 
-  // Reset on album change
+  // Reset on album change (skip stopping playback if continuous play triggered the advance)
   const prevSettled = useRef(settled);
   useEffect(() => {
     if (settled !== prevSettled.current) {
       prevSettled.current = settled;
       setTrackIdx(0);
       setProgress(0);
-      setPlaying(false);
-      if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
+      if (continuousAdvancing.current) {
+        continuousAdvancing.current = false;
+        // Keep playing=true so audio src effect picks up the new track and plays it
+      } else {
+        setPlaying(false);
+        if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
+      }
     }
   }, [settled]);
 
@@ -1424,6 +1547,27 @@ export default function App() {
                 {albums.length} albums
               </span>
             )}
+            <div style={{ position:"relative" }}>
+              <button onClick={() => setShowSettings(s => !s)} style={{
+                background: showSettings ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.04)",
+                border:"1px solid rgba(255,255,255,.1)",
+                borderRadius:8, padding:"6px 8px",
+                color: showSettings ? T.text : T.text55,
+                cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                transition:"all .15s",
+              }} aria-label="Settings">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z"/></svg>
+              </button>
+              {showSettings && (
+                <SettingsPopover
+                  onClose={() => setShowSettings(false)}
+                  continuousPlay={continuousPlay}
+                  onToggleContinuous={() => setContinuousPlay(p => !p)}
+                  nextAlbumMode={nextAlbumMode}
+                  onChangeNextMode={setNextAlbumMode}
+                />
+              )}
+            </div>
             <button onClick={() => setShowPlex(true)} style={{
               background: connected ? "rgba(201,166,107,.08)" : "rgba(255,255,255,.04)",
               border: connected ? `1px solid rgba(201,166,107,.25)` : "1px solid rgba(255,255,255,.1)",
@@ -1462,6 +1606,12 @@ export default function App() {
             onPlayPause={() => setPlaying(p => !p)}
             onPrev={() => { if (trackIdx > 0) { setTrackIdx(i => i-1); setProgress(0); } }}
             onNext={() => { if (trackIdx < tracks.length-1) { setTrackIdx(i => i+1); setProgress(0); } }}
+            onRandomAlbum={() => {
+              if (albums.length <= 1) return;
+              let idx;
+              do { idx = Math.floor(Math.random() * albums.length); } while (idx === settled && albums.length > 1);
+              jumpTo(idx);
+            }}
             currentTrack={track} album={album} progress={progress}
             onSeek={pct => {
               setProgress(pct);
