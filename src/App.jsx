@@ -1139,6 +1139,7 @@ export default function App() {
   const [progress, setProgress] = useState(0);
   const [showPlex, setShowPlex] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [mediaKeysError, setMediaKeysError] = useState(false);
 
   // Audio element for real playback
   const audioRef = useRef(null);
@@ -1160,6 +1161,15 @@ export default function App() {
     ? (plexTracks[album?.id] || [])
     : (TRACKS[album?.id] || []);
   const track = tracks[trackIdx] || null;
+
+  // Random album jump: fires once after albums first load (or reconnect)
+  const randomJumpPending = useRef(false);
+  useEffect(() => {
+    if (randomJumpPending.current && albums.length > 0) {
+      randomJumpPending.current = false;
+      jumpTo(Math.floor(Math.random() * albums.length));
+    }
+  }, [albums, jumpTo]);
 
   // Auto-connect on load if credentials are saved (ref guard prevents StrictMode double-fire)
   const autoConnectAttempted = useRef(false);
@@ -1266,6 +1276,15 @@ export default function App() {
     return () => { unsubs.then(fns => fns.forEach(f => f())); };
   }, [tracks.length]);
 
+  // Tauri: surface media key registration failure with instructions
+  useEffect(() => {
+    if (!IS_TAURI) return;
+    const unsub = listen("media-keys-error", () => {
+      setMediaKeysError(true);
+    });
+    return () => { unsub.then(f => f()); };
+  }, []);
+
   // Tauri: update tray tooltip + menu when track changes
   useEffect(() => {
     if (!IS_TAURI || !track) return;
@@ -1316,6 +1335,7 @@ export default function App() {
     const sortKey = a => a.artist.replace(/^(the|a|an)\s+/i, "").toLowerCase();
     mapped.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
     if (mapped.length === 0) throw new Error("No albums found in this Plex library. Check that it contains a Music section.");
+    randomJumpPending.current = true;
     setAlbums(mapped);
     setPlexTracks({});
     setTrackIdx(0);
@@ -1358,6 +1378,25 @@ export default function App() {
         {/* Dedicated drag strip in Tauri — full width, no content, always grabbable */}
         {IS_TAURI && (
           <div data-tauri-drag-region style={{ height:36, width:"100%", flexShrink:0 }} />
+        )}
+
+        {/* Media keys error banner */}
+        {mediaKeysError && (
+          <div style={{
+            position:"fixed", bottom:20, left:"50%", transform:"translateX(-50%)",
+            background:"rgba(30,20,10,0.96)", border:"1px solid rgba(201,166,107,0.35)",
+            borderRadius:10, padding:"10px 16px", display:"flex", alignItems:"center", gap:12,
+            zIndex:9999, maxWidth:460, boxShadow:"0 4px 24px rgba(0,0,0,0.5)",
+          }}>
+            <span style={{ fontSize:13, color:"#c9a66b", lineHeight:1.4 }}>
+              Media keys unavailable. Grant Accessibility access to Overflow in{" "}
+              <strong>System Settings › Privacy &amp; Security › Accessibility</strong>, then relaunch.
+            </span>
+            <button onClick={() => setMediaKeysError(false)} style={{
+              background:"none", border:"none", color:"rgba(232,228,223,0.45)", cursor:"pointer",
+              fontSize:16, padding:"0 2px", flexShrink:0, lineHeight:1,
+            }}>✕</button>
+          </div>
         )}
 
         {/* Header row — logo left, controls right */}

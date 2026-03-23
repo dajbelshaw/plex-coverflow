@@ -48,6 +48,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
             // ── System tray ──────────────────────────────────────────────
             let menu = build_tray_menu(app.handle(), "", "")?;
@@ -112,6 +113,7 @@ pub fn run() {
                 },
             ) {
                 eprintln!("[overflow] Could not register media keys: {e}");
+                app.emit("media-keys-error", e.to_string()).ok();
             }
 
             Ok(())
