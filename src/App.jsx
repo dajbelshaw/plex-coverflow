@@ -1736,7 +1736,7 @@ export default function App() {
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
             {connected && (
-              <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, color:T.gold, letterSpacing:".04em" }}>
+              <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, color:T.text65, letterSpacing:".04em" }}>
                 {albums.length} albums
               </span>
             )}
@@ -1781,14 +1781,14 @@ export default function App() {
         )}
 
         {albums.length > 0 && (
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:"6px 0 2px", position:"relative", zIndex:1 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:"0 0 2px", position:"relative", zIndex:1 }}>
             <button onClick={randomAlbum} title="Random album (r)" aria-label="Random album" style={{
-              background:"rgba(232,228,223,.08)", border:"1px solid rgba(232,228,223,.25)",
-              borderRadius:4, padding:"3px 10px 3px 8px", cursor:"pointer",
-              color:T.text65, display:"flex", alignItems:"center", gap:6,
-              fontFamily:"'DM Sans',sans-serif", fontSize:11, letterSpacing:".08em", textTransform:"uppercase",
+              background:"none", border:"none",
+              padding:"6px 10px 6px 8px", cursor:"pointer",
+              color:T.text45, display:"flex", alignItems:"center", gap:5,
+              fontFamily:"'DM Sans',sans-serif", fontSize:11,
             }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
               Random album
             </button>
           </div>
