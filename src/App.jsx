@@ -1266,6 +1266,29 @@ export default function App() {
 
   // Audio element for real playback
   const audioRef = useRef(null);
+  const fadeTimerRef = useRef(null);
+
+  // Fade volume to 0 over ~150ms then pause; restores volume for next play
+  const fadeAndPause = useCallback((audio) => {
+    if (!audio || audio.paused) return;
+    if (fadeTimerRef.current) clearInterval(fadeTimerRef.current);
+    const steps = 10;
+    const interval = 15; // ms — 10 steps × 15ms = 150ms total
+    const startVol = audio.volume;
+    const decrement = startVol / steps;
+    let remaining = steps;
+    fadeTimerRef.current = setInterval(() => {
+      remaining--;
+      if (remaining <= 0) {
+        clearInterval(fadeTimerRef.current);
+        fadeTimerRef.current = null;
+        audio.pause();
+        audio.volume = startVol;
+      } else {
+        audio.volume = Math.max(0, audio.volume - decrement);
+      }
+    }, interval);
+  }, []);
 
   useEffect(() => {
     const audio = new Audio();
@@ -1274,6 +1297,7 @@ export default function App() {
       if (audio.duration) setProgress((audio.currentTime / audio.duration) * 100);
     };
     return () => {
+      if (fadeTimerRef.current) clearInterval(fadeTimerRef.current);
       audio.pause();
       audio.src = "";
     };
@@ -1374,16 +1398,18 @@ export default function App() {
 
     const src = plexProxyUrl(serverUrl, `${t.partKey}?X-Plex-Token=${token}`);
     if (audio.src !== new URL(src, location.href).href) {
+      if (fadeTimerRef.current) { clearInterval(fadeTimerRef.current); fadeTimerRef.current = null; audio.volume = 1; }
       audio.src = src;
       setProgress(0);
     }
 
     if (playing) {
+      if (fadeTimerRef.current) { clearInterval(fadeTimerRef.current); fadeTimerRef.current = null; audio.volume = 1; }
       audio.play().catch(() => {});
     } else {
-      audio.pause();
+      fadeAndPause(audio);
     }
-  }, [trackIdx, playing, connected, tracks]);
+  }, [trackIdx, playing, connected, tracks, fadeAndPause]);
 
   // Simulated playback (mock mode only)
   useEffect(() => {
