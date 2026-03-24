@@ -68,6 +68,13 @@ async function plexFetchTracks(serverUrl, token, ratingKey) {
   return data.MediaContainer.Metadata || [];
 }
 
+async function plexRate(serverUrl, token, ratingKey, rating) {
+  const url = plexProxyUrl(serverUrl,
+    `/:/rate?key=${ratingKey}&identifier=com.plexapp.plugins.library&rating=${rating}&X-Plex-Token=${token}`
+  );
+  await fetch(url, { method: "PUT", headers: { Accept: "application/json" } });
+}
+
 // --- Mock Data (fallback when not connected to Plex) ---
 const ALBUMS = [
   { id: 1, title: "Rumours", artist: "Fleetwood Mac", year: 1977 },
@@ -480,7 +487,7 @@ function fmtTime(s) {
   return `${m}:${sec}`;
 }
 
-function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onShuffleTracks, isShuffling, currentTrack, album, progress, onSeek, audioTime }) {
+function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onShuffleTracks, isShuffling, currentTrack, album, progress, onSeek, audioTime, isFavourite, onToggleFavourite }) {
   const trackName = typeof currentTrack === "string" ? currentTrack : currentTrack?.title;
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10, padding:"0 40px" }}>
@@ -488,8 +495,22 @@ function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onShuffleTrack
         <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:600, color:T.text, letterSpacing:".02em" }}>
           {trackName || "Select an album"}
         </div>
-        <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:13, color:T.text55, marginTop:3, letterSpacing:".04em", textTransform:"uppercase" }}>
-          {album ? `${album.artist}  ·  ${album.title}` : ""}
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, marginTop:3 }}>
+          <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:13, color:T.text55, letterSpacing:".04em", textTransform:"uppercase" }}>
+            {album ? `${album.artist}  ·  ${album.title}` : ""}
+          </div>
+          {album && (
+            <button onClick={onToggleFavourite} aria-label={isFavourite ? "Unfavourite" : "Favourite"} aria-pressed={isFavourite}
+              style={{ background:"none", border:"none", padding:"11px 8px", margin:"-11px -8px", cursor:"pointer",
+                color: isFavourite ? T.gold : T.text45, display:"flex", alignItems:"center", lineHeight:1,
+                transition:"color .2s",
+              }}>
+              {isFavourite
+                ? <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z"/></svg>
+              }
+            </button>
+          )}
         </div>
       </div>
 
@@ -1569,7 +1590,17 @@ export default function App() {
     jumpTo(idx);
   }, [albums.length, settled, jumpTo]);
 
-  // Keyboard shortcuts: "/" opens search, "r" jumps to random album
+  const toggleFavourite = useCallback(() => {
+    if (!album || !serverUrl || !token) return;
+    const newRating = album.userRating > 0 ? 0 : 10;
+    setAlbums(prev => prev.map(a => a.id === album.id ? { ...a, userRating: newRating } : a));
+    plexRate(serverUrl, token, album.id, newRating).catch(() => {
+      // revert on failure
+      setAlbums(prev => prev.map(a => a.id === album.id ? { ...a, userRating: album.userRating } : a));
+    });
+  }, [album, serverUrl, token]);
+
+  // Keyboard shortcuts: "/" opens search, "r" jumps to random album, "f" toggles favourite
   useEffect(() => {
     const h = (e) => {
       if (document.activeElement?.tagName === "INPUT") return;
@@ -1578,10 +1609,11 @@ export default function App() {
         setShowSearch(true);
       }
       if (e.key === "r" && !showSearch && !showPlex) randomAlbum();
+      if (e.key === "f" && !showSearch && !showPlex) toggleFavourite();
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [showSearch, showPlex, randomAlbum]);
+  }, [showSearch, showPlex, randomAlbum, toggleFavourite]);
 
   // Reset on album change (skip stopping playback if continuous play triggered the advance)
   const prevSettled = useRef(settled);
@@ -1611,6 +1643,7 @@ export default function App() {
       artist: a.parentTitle || "Unknown Artist",
       year: a.year || "",
       thumbUrl: a.thumb ? plexProxyUrl(url, `${a.thumb}?X-Plex-Token=${tok}`) : null,
+      userRating: a.userRating || 0,
     }));
     const sortKey = a => a.artist.replace(/^(the|a|an)\s+/i, "").toLowerCase();
     mapped.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
@@ -1748,15 +1781,15 @@ export default function App() {
         )}
 
         {albums.length > 0 && (
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"14px 0 2px" }}>
-            <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:11, color:T.text45, letterSpacing:".1em", textTransform:"uppercase" }}>
-              {settled + 1} / {albums.length}
-            </div>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:"6px 0 2px", position:"relative", zIndex:1 }}>
             <button onClick={randomAlbum} title="Random album (r)" aria-label="Random album" style={{
-              background:"none", border:"none", padding:"17px 14px", margin:"-17px -14px", cursor:"pointer",
-              color:T.text45, display:"flex", alignItems:"center", lineHeight:1,
+              background:"rgba(232,228,223,.08)", border:"1px solid rgba(232,228,223,.25)",
+              borderRadius:4, padding:"3px 10px 3px 8px", cursor:"pointer",
+              color:T.text65, display:"flex", alignItems:"center", gap:6,
+              fontFamily:"'DM Sans',sans-serif", fontSize:11, letterSpacing:".08em", textTransform:"uppercase",
             }}>
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+              Random album
             </button>
           </div>
         )}
@@ -1791,6 +1824,8 @@ export default function App() {
             isShuffling={trackShuffle}
             onShuffleTracks={toggleTrackShuffle}
             currentTrack={track} album={album} progress={progress} audioTime={audioTime}
+            isFavourite={album?.userRating > 0}
+            onToggleFavourite={toggleFavourite}
             onSeek={pct => {
               setProgress(pct);
               if (connected && audioRef.current?.duration) {

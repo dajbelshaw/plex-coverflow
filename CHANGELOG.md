@@ -4,6 +4,19 @@ All notable changes to Overflow are listed here. Entries are written for people 
 
 ---
 
+## 2.0.0 — 2026-03-24
+
+### New
+- **Favourite albums.** A heart icon next to the artist and album name lets you favourite any album. Favourites are stored in Plex — they sync with Plexamp and persist across restarts. Press `f` to toggle the current album. Favourited albums show a gold heart; a second press removes the favourite.
+
+### Improved
+- **Random album button** is now labelled "Random album" with an icon, and sits above the Cover Flow on its own. The album position counter (949 / 1401) has been removed — the total is already shown in the header.
+
+### Fixed
+- The random album button was being covered by the background tint layer and disappearing after load.
+
+---
+
 ## 1.5.0 — 2026-03-24
 
 ### Improved
