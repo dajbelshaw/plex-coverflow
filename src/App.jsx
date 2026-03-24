@@ -190,6 +190,7 @@ function useSpringCarousel(itemCount, initialIndex = 7, overlayOpenRef) {
   useEffect(() => {
     const h = (e) => {
       if (overlayOpenRef?.current) return;
+      if (e.metaKey || e.ctrlKey) return;
       if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
         e.preventDefault();
         tgt.current = clamp(Math.round(tgt.current) - 1, 0, itemCount - 1);
@@ -570,14 +571,15 @@ const pS = {
 function TrackList({ tracks, currentTrackIndex, onSelectTrack }) {
   if (!tracks?.length) return null;
   return (
-    <div style={{ maxWidth:480, margin:"0 auto", padding:"0 20px" }}>
+    <div style={{ maxWidth:480, margin:"0 auto", padding:"0 20px", height:"100%", display:"flex", flexDirection:"column" }}>
       <div style={{
         fontFamily:"'DM Sans',sans-serif", fontSize:11,
         textTransform:"uppercase", letterSpacing:".12em",
         color:T.text55, marginBottom:10, paddingLeft:4,
+        flexShrink:0,
       }}>Tracklist</div>
       <div style={{
-        maxHeight:200, overflowY:"auto",
+        flex:1, overflowY:"auto",
         scrollbarWidth:"thin", scrollbarColor:"rgba(255,255,255,.12) transparent",
       }}>
         {tracks.map((t, i) => {
@@ -1600,20 +1602,31 @@ export default function App() {
     });
   }, [album, serverUrl, token]);
 
-  // Keyboard shortcuts: "/" opens search, "r" jumps to random album, "f" toggles favourite
+  // Keyboard shortcuts: "/" search, "r" random, "f" favourite, "," prev track, "." next track
   useEffect(() => {
     const h = (e) => {
       if (document.activeElement?.tagName === "INPUT") return;
+      if (e.metaKey || e.ctrlKey) return;
       if (e.key === "/" && !showSearch && !showPlex) {
         e.preventDefault();
         setShowSearch(true);
       }
       if (e.key === "r" && !showSearch && !showPlex) randomAlbum();
       if (e.key === "f" && !showSearch && !showPlex) toggleFavourite();
+      if (e.key === "," && !showSearch && !showPlex) {
+        setTrackIdx(i => Math.max(0, i - 1));
+        setProgress(0);
+        setPlaying(true);
+      }
+      if (e.key === "." && !showSearch && !showPlex) {
+        setTrackIdx(i => Math.min(tracks.length - 1, i + 1));
+        setProgress(0);
+        setPlaying(true);
+      }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [showSearch, showPlex, randomAlbum, toggleFavourite]);
+  }, [showSearch, showPlex, randomAlbum, toggleFavourite, tracks.length]);
 
   // Reset on album change (skip stopping playback if continuous play triggered the advance)
   const prevSettled = useRef(settled);
