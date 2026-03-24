@@ -248,11 +248,44 @@ function useSpringCarousel(itemCount, initialIndex = 7) {
 /* =========================================================================
    ALBUM ART — Procedural SVG (falls back when no Plex artwork)
    ========================================================================= */
+const ART_CACHE = "overflow-album-art-v1";
+
+async function getCachedArt(thumbUrl) {
+  if (!thumbUrl || !("caches" in window)) return thumbUrl;
+  const cacheKey = thumbUrl.replace(/([?&])X-Plex-Token=[^&]*/g, "$1").replace(/[?&]$/, "");
+  try {
+    const cache = await caches.open(ART_CACHE);
+    const hit = await cache.match(cacheKey);
+    if (hit) return URL.createObjectURL(await hit.blob());
+    const res = await fetch(thumbUrl);
+    if (res.ok) {
+      await cache.put(cacheKey, res.clone());
+      return URL.createObjectURL(await res.blob());
+    }
+  } catch {}
+  return thumbUrl;
+}
+
 function AlbumArt({ album, size = 220 }) {
-  if (album.thumbUrl) {
+  const [src, setSrc] = useState(null);
+  const blobRef = useRef(null);
+
+  useEffect(() => {
+    if (!album.thumbUrl) { setSrc(null); return; }
+    let cancelled = false;
+    getCachedArt(album.thumbUrl).then(url => {
+      if (cancelled) { if (url?.startsWith("blob:")) URL.revokeObjectURL(url); return; }
+      if (blobRef.current) URL.revokeObjectURL(blobRef.current);
+      blobRef.current = url?.startsWith("blob:") ? url : null;
+      setSrc(url);
+    });
+    return () => { cancelled = true; };
+  }, [album.thumbUrl]);
+
+  if (src) {
     return (
       <img
-        src={album.thumbUrl}
+        src={src}
         width={size}
         height={size}
         style={{ display: "block", borderRadius: 6, objectFit: "cover", width: size, height: size }}
