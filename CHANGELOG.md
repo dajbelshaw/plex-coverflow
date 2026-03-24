@@ -4,6 +4,13 @@ All notable changes to Overflow are listed here. Entries are written for people 
 
 ---
 
+## 1.4.2 — 2026-03-24
+
+### Fixed
+- Random album button next to the album counter was invisible due to an undefined colour value.
+
+---
+
 ## 1.4.1 — 2026-03-24
 
 ### Improved

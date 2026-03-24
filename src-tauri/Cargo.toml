@@ -1,6 +1,6 @@
 [package]
 name = "overflow"
-version = "1.4.1"
+version = "1.4.2"
 description = "Cover Flow music player for Plex"
 authors = ["Doug Belshaw"]
 license = "AGPL-3.0"

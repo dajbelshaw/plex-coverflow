@@ -458,7 +458,7 @@ function CoverFlow({ albums, renderPos, settled, onWheel, onPointerDown, onPoint
 /* =========================================================================
    PLAYER CONTROLS
    ========================================================================= */
-function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onRandomAlbum, currentTrack, album, progress, onSeek }) {
+function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onShuffleTracks, isShuffling, currentTrack, album, progress, onSeek }) {
   const trackName = typeof currentTrack === "string" ? currentTrack : currentTrack?.title;
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10, padding:"0 40px" }}>
@@ -496,9 +496,11 @@ function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onRandomAlbum,
             <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
           </button>
         </div>
-        <button onClick={onRandomAlbum} style={{
-          ...bS, width:34, height:34, color:T.text45,
-        }} aria-label="Random album">
+        <button onClick={onShuffleTracks} style={{
+          ...bS, width:34, height:34,
+          color: isShuffling ? T.gold : T.text45,
+          borderColor: isShuffling ? T.gold : "rgba(255,255,255,.1)",
+        }} aria-label={isShuffling ? "Shuffle on" : "Shuffle off"} aria-pressed={isShuffling}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
         </button>
       </div>
@@ -1253,6 +1255,10 @@ export default function App() {
   const [playing, setPlaying] = useState(false);
   const [trackIdx, setTrackIdx] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [trackShuffle, setTrackShuffle] = useState(false);
+  const trackShuffleRef = useRef(false);
+  const shuffleOrderRef = useRef([]);
+  const shufflePosRef = useRef(0);
   const [showPlex, setShowPlex] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [mediaKeysError, setMediaKeysError] = useState(false);
@@ -1263,6 +1269,22 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   // Flag: set before calling jumpTo during continuous advance, cleared in album-change effect
   const continuousAdvancing = useRef(false);
+
+  // Keep trackShuffleRef in sync so onended closure always sees current value
+  useEffect(() => { trackShuffleRef.current = trackShuffle; }, [trackShuffle]);
+
+  // Build a Fisher-Yates shuffled order, placing currentIdx first
+  const buildShuffleOrder = useCallback((len, currentIdx) => {
+    const indices = Array.from({ length: len }, (_, i) => i);
+    for (let i = indices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    const pos = indices.indexOf(currentIdx);
+    if (pos > 0) { indices.splice(pos, 1); indices.unshift(currentIdx); }
+    shuffleOrderRef.current = indices;
+    shufflePosRef.current = 0;
+  }, []);
 
   // Audio element for real playback
   const audioRef = useRef(null);
@@ -1308,6 +1330,13 @@ export default function App() {
     ? (plexTracks[album?.id] || [])
     : (TRACKS[album?.id] || []);
   const track = tracks[trackIdx] || null;
+
+  const toggleTrackShuffle = useCallback(() => {
+    setTrackShuffle(s => {
+      if (!s) buildShuffleOrder(tracks.length, trackIdx);
+      return !s;
+    });
+  }, [tracks.length, trackIdx, buildShuffleOrder]);
 
   // Persist settings changes
   useEffect(() => { localStorage.setItem("overflow_continuous", String(continuousPlay)); }, [continuousPlay]);
@@ -1367,15 +1396,34 @@ export default function App() {
     const audio = audioRef.current;
     if (!audio) return;
     audio.onended = () => {
-      setTrackIdx(ti => {
-        if (ti + 1 >= tracks.length) {
-          if (continuousPlay) { advanceToNextAlbum(); return 0; }
-          setPlaying(false); return 0;
+      if (trackShuffleRef.current) {
+        const order = shuffleOrderRef.current;
+        const nextPos = shufflePosRef.current + 1;
+        if (nextPos < order.length) {
+          shufflePosRef.current = nextPos;
+          setTrackIdx(order[nextPos]);
+        } else {
+          if (continuousPlay) { advanceToNextAlbum(); }
+          else setPlaying(false);
+          shufflePosRef.current = 0;
         }
-        return ti + 1;
-      });
+      } else {
+        setTrackIdx(ti => {
+          if (ti + 1 >= tracks.length) {
+            if (continuousPlay) { advanceToNextAlbum(); return 0; }
+            setPlaying(false); return 0;
+          }
+          return ti + 1;
+        });
+      }
     };
   }, [tracks.length, continuousPlay, advanceToNextAlbum]);
+
+  // Rebuild shuffle order when album changes (new track list)
+  useEffect(() => {
+    if (trackShuffle && tracks.length > 0) buildShuffleOrder(tracks.length, 0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tracks.length]);
 
   // Clamp trackIdx when tracks change (e.g. album switch)
   useEffect(() => {
@@ -1471,6 +1519,13 @@ export default function App() {
     }).catch(() => {});
   }, [track, album]);
 
+  const randomAlbum = useCallback(() => {
+    if (albums.length <= 1) return;
+    let idx;
+    do { idx = Math.floor(Math.random() * albums.length); } while (idx === settled && albums.length > 1);
+    jumpTo(idx);
+  }, [albums.length, settled, jumpTo]);
+
   // Keyboard shortcuts: "/" opens search, "r" jumps to random album
   useEffect(() => {
     const h = (e) => {
@@ -1479,15 +1534,11 @@ export default function App() {
         e.preventDefault();
         setShowSearch(true);
       }
-      if (e.key === "r" && albums.length > 1 && !showSearch && !showPlex) {
-        let idx;
-        do { idx = Math.floor(Math.random() * albums.length); } while (idx === settled && albums.length > 1);
-        jumpTo(idx);
-      }
+      if (e.key === "r" && !showSearch && !showPlex) randomAlbum();
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [showSearch, showPlex, albums.length, settled, jumpTo]);
+  }, [showSearch, showPlex, randomAlbum]);
 
   // Reset on album change (skip stopping playback if continuous play triggered the advance)
   const prevSettled = useRef(settled);
@@ -1651,8 +1702,16 @@ export default function App() {
         )}
 
         {albums.length > 0 && (
-          <div style={{ textAlign:"center", padding:"14px 0 2px", fontFamily:"'DM Sans',sans-serif", fontSize:11, color:T.text45, letterSpacing:".1em", textTransform:"uppercase" }}>
-            {settled + 1} / {albums.length}
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"14px 0 2px" }}>
+            <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:11, color:T.text45, letterSpacing:".1em", textTransform:"uppercase" }}>
+              {settled + 1} / {albums.length}
+            </div>
+            <button onClick={randomAlbum} title="Random album (r)" aria-label="Random album" style={{
+              background:"none", border:"none", padding:3, cursor:"pointer",
+              color:T.text45, display:"flex", alignItems:"center", lineHeight:1,
+            }}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+            </button>
           </div>
         )}
 
@@ -1667,14 +1726,24 @@ export default function App() {
           <PlayerControls
             isPlaying={playing}
             onPlayPause={() => setPlaying(p => !p)}
-            onPrev={() => { if (trackIdx > 0) { setTrackIdx(i => i-1); setProgress(0); } }}
-            onNext={() => { if (trackIdx < tracks.length-1) { setTrackIdx(i => i+1); setProgress(0); } }}
-            onRandomAlbum={() => {
-              if (albums.length <= 1) return;
-              let idx;
-              do { idx = Math.floor(Math.random() * albums.length); } while (idx === settled && albums.length > 1);
-              jumpTo(idx);
+            onPrev={() => {
+              if (trackShuffle) {
+                const prevPos = shufflePosRef.current - 1;
+                if (prevPos >= 0) { shufflePosRef.current = prevPos; setTrackIdx(shuffleOrderRef.current[prevPos]); setProgress(0); }
+              } else {
+                if (trackIdx > 0) { setTrackIdx(i => i-1); setProgress(0); }
+              }
             }}
+            onNext={() => {
+              if (trackShuffle) {
+                const nextPos = shufflePosRef.current + 1;
+                if (nextPos < shuffleOrderRef.current.length) { shufflePosRef.current = nextPos; setTrackIdx(shuffleOrderRef.current[nextPos]); setProgress(0); }
+              } else {
+                if (trackIdx < tracks.length-1) { setTrackIdx(i => i+1); setProgress(0); }
+              }
+            }}
+            isShuffling={trackShuffle}
+            onShuffleTracks={toggleTrackShuffle}
             currentTrack={track} album={album} progress={progress}
             onSeek={pct => {
               setProgress(pct);
