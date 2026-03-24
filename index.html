@@ -53,6 +53,9 @@
       .track-row:hover { background: rgba(255,255,255,.03); }
       .track-row[aria-selected="true"] { background: rgba(201,166,107,.08); }
       .track-row:focus-visible { outline: 2px solid #c9a66b; outline-offset: -2px; }
+      .track-fav { opacity: 0; transition: opacity .15s; }
+      .track-fav[data-active] { opacity: 1; }
+      .track-row:hover .track-fav { opacity: 1; }
     </style>
   </head>
   <body>

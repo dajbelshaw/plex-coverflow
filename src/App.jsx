@@ -568,7 +568,7 @@ const pS = {
 /* =========================================================================
    TRACK LIST
    ========================================================================= */
-function TrackList({ tracks, currentTrackIndex, onSelectTrack }) {
+function TrackList({ tracks, currentTrackIndex, onSelectTrack, onToggleTrackFavourite }) {
   if (!tracks?.length) return null;
   return (
     <div style={{ maxWidth:480, margin:"0 auto", padding:"0 20px", height:"100%", display:"flex", flexDirection:"column" }}>
@@ -590,6 +590,7 @@ function TrackList({ tracks, currentTrackIndex, onSelectTrack }) {
             : t.duration
               ? `${Math.floor(t.duration/60000)}:${String(Math.floor((t.duration%60000)/1000)).padStart(2,"0")}`
               : null;
+          const fav = t.userRating > 0;
           return (
             <button
               key={i}
@@ -604,9 +605,25 @@ function TrackList({ tracks, currentTrackIndex, onSelectTrack }) {
                 {name}
               </span>
               {dur && (
-                <span style={{ marginLeft:"auto", fontFamily:"'DM Sans',sans-serif", fontSize:12, color:T.text45, flexShrink:0 }}>
+                <span style={{ marginLeft:"auto", fontFamily:"'DM Sans',sans-serif", fontSize:12, color:T.text45, flexShrink:0, paddingRight: onToggleTrackFavourite ? 4 : 0 }}>
                   {dur}
                 </span>
+              )}
+              {onToggleTrackFavourite && (
+                <button
+                  className="track-fav"
+                  data-active={fav ? "true" : undefined}
+                  aria-label={fav ? "Unfavourite track" : "Favourite track"}
+                  aria-pressed={fav}
+                  onClick={e => { e.stopPropagation(); onToggleTrackFavourite(t.ratingKey); }}
+                  style={{ all:"unset", cursor:"pointer", flexShrink:0, display:"flex", alignItems:"center",
+                    color: fav ? T.gold : T.text45, lineHeight:1, padding:"4px 2px", margin:"-4px -2px" }}
+                >
+                  {fav
+                    ? <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                    : <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z"/></svg>
+                  }
+                </button>
               )}
             </button>
           );
@@ -1451,6 +1468,7 @@ export default function App() {
           duration: t.duration,
           partKey: t.Media?.[0]?.Part?.[0]?.key || null,
           ratingKey: t.ratingKey,
+          userRating: t.userRating || 0,
         }));
         setPlexTracks(prev => ({ ...prev, [album.id]: mapped }));
       })
@@ -1597,10 +1615,24 @@ export default function App() {
     const newRating = album.userRating > 0 ? 0 : 10;
     setAlbums(prev => prev.map(a => a.id === album.id ? { ...a, userRating: newRating } : a));
     plexRate(serverUrl, token, album.id, newRating).catch(() => {
-      // revert on failure
       setAlbums(prev => prev.map(a => a.id === album.id ? { ...a, userRating: album.userRating } : a));
     });
   }, [album, serverUrl, token]);
+
+  const toggleTrackFavourite = useCallback((albumId, ratingKey) => {
+    if (!serverUrl || !token) return;
+    setPlexTracks(prev => {
+      const list = prev[albumId] || [];
+      const t = list.find(x => x.ratingKey === ratingKey);
+      if (!t) return prev;
+      const newRating = t.userRating > 0 ? 0 : 10;
+      const updated = list.map(x => x.ratingKey === ratingKey ? { ...x, userRating: newRating } : x);
+      plexRate(serverUrl, token, ratingKey, newRating).catch(() => {
+        setPlexTracks(p => ({ ...p, [albumId]: (p[albumId] || []).map(x => x.ratingKey === ratingKey ? { ...x, userRating: t.userRating } : x) }));
+      });
+      return { ...prev, [albumId]: updated };
+    });
+  }, [serverUrl, token]);
 
   // Keyboard shortcuts: "/" search, "r" random, "f" favourite, "," prev track, "." next track
   useEffect(() => {
@@ -1857,6 +1889,7 @@ export default function App() {
               setProgress(0);
               setPlaying(true);
             }}
+            onToggleTrackFavourite={connected && album ? (ratingKey => toggleTrackFavourite(album.id, ratingKey)) : null}
           />
         </div>
 
