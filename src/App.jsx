@@ -14,6 +14,7 @@ const T = {
   text:     "#e8e4df",
   text65:   "rgba(232,228,223,.65)",
   text55:   "rgba(232,228,223,.55)",
+  text50:   "rgba(232,228,223,.5)",
   text45:   "rgba(232,228,223,.45)",
   red:      "#e07070",
 };
@@ -111,7 +112,9 @@ const TRACKS = {
    - Momentum carry from drag/wheel release
    - requestAnimationFrame loop, no CSS transitions on covers
    ========================================================================= */
-function useSpringCarousel(itemCount, initialIndex = 7) {
+const reducedMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function useSpringCarousel(itemCount, initialIndex = 7, overlayOpenRef) {
   const pos = useRef(initialIndex);
   const vel = useRef(0);
   const tgt = useRef(initialIndex);
@@ -134,6 +137,15 @@ function useSpringCarousel(itemCount, initialIndex = 7) {
   const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 
   const tick = useCallback(() => {
+    // Snap instantly when user prefers reduced motion
+    if (reducedMotion) {
+      pos.current = tgt.current;
+      vel.current = 0;
+      setRenderPos(tgt.current);
+      setSettled(tgt.current);
+      return;
+    }
+
     if (dragging.current) {
       setRenderPos(pos.current);
       raf.current = requestAnimationFrame(tick);
@@ -170,6 +182,7 @@ function useSpringCarousel(itemCount, initialIndex = 7) {
   // Keyboard
   useEffect(() => {
     const h = (e) => {
+      if (overlayOpenRef?.current) return;
       if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
         e.preventDefault();
         tgt.current = clamp(Math.round(tgt.current) - 1, 0, itemCount - 1);
@@ -266,7 +279,14 @@ async function getCachedArt(thumbUrl) {
   return thumbUrl;
 }
 
-function AlbumArt({ album, size = 220 }) {
+const reflectionStyle = {
+  marginTop:6, transform:"scaleY(-1)", opacity:.11,
+  maskImage:"linear-gradient(to bottom,rgba(0,0,0,.45) 0%,transparent 50%)",
+  WebkitMaskImage:"linear-gradient(to bottom,rgba(0,0,0,.45) 0%,transparent 50%)",
+  pointerEvents:"none",
+};
+
+function AlbumArt({ album, size = 220, withReflection = false }) {
   const [src, setSrc] = useState(null);
   const blobRef = useRef(null);
 
@@ -282,17 +302,21 @@ function AlbumArt({ album, size = 220 }) {
     return () => { cancelled = true; };
   }, [album.thumbUrl]);
 
-  if (src) {
-    return (
-      <img
-        src={src}
-        width={size}
-        height={size}
-        style={{ display: "block", borderRadius: 6, objectFit: "cover", width: size, height: size }}
-      />
-    );
-  }
+  const artEl = src
+    ? <img src={src} alt={`${album.title} by ${album.artist}`} width={size} height={size}
+        style={{ display:"block", borderRadius:6, objectFit:"cover", width:size, height:size }} />
+    : <ArtSVG album={album} size={size} />;
 
+  if (!withReflection) return artEl;
+  return (
+    <>
+      {artEl}
+      <div style={reflectionStyle} aria-hidden="true">{artEl}</div>
+    </>
+  );
+}
+
+function ArtSVG({ album, size }) {
   const h = album.id * 2654435761;
   const h1 = h % 360;
   const h2 = (h * 7 + 137) % 360;
@@ -438,16 +462,7 @@ function CoverFlow({ albums, renderPos, settled, onWheel, onPointerDown, onPoint
               // NO transition property — driven entirely by rAF
             }}
           >
-            <AlbumArt album={album} size={SZ} />
-            {/* Reflection */}
-            <div style={{
-              marginTop:6, transform:"scaleY(-1)", opacity:.11,
-              maskImage:"linear-gradient(to bottom,rgba(0,0,0,.45) 0%,transparent 50%)",
-              WebkitMaskImage:"linear-gradient(to bottom,rgba(0,0,0,.45) 0%,transparent 50%)",
-              pointerEvents:"none",
-            }}>
-              <AlbumArt album={album} size={SZ} />
-            </div>
+            <AlbumArt album={album} size={SZ} withReflection />
           </div>
         );
       })}
@@ -458,12 +473,19 @@ function CoverFlow({ albums, renderPos, settled, onWheel, onPointerDown, onPoint
 /* =========================================================================
    PLAYER CONTROLS
    ========================================================================= */
-function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onShuffleTracks, isShuffling, currentTrack, album, progress, onSeek }) {
+function fmtTime(s) {
+  if (!s || !isFinite(s)) return "0:00";
+  const m = Math.floor(s / 60);
+  const sec = String(Math.floor(s % 60)).padStart(2, "0");
+  return `${m}:${sec}`;
+}
+
+function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onShuffleTracks, isShuffling, currentTrack, album, progress, onSeek, audioTime }) {
   const trackName = typeof currentTrack === "string" ? currentTrack : currentTrack?.title;
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10, padding:"0 40px" }}>
       <div style={{ textAlign:"center", minHeight:48 }}>
-        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:600, color:"#e8e4df", letterSpacing:".02em" }}>
+        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:18, fontWeight:600, color:T.text, letterSpacing:".02em" }}>
           {trackName || "Select an album"}
         </div>
         <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:13, color:T.text55, marginTop:3, letterSpacing:".04em", textTransform:"uppercase" }}>
@@ -478,6 +500,7 @@ function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onShuffleTrack
           onChange={e => onSeek(Number(e.target.value))}
           className="seek-bar"
           aria-label="Playback position"
+          aria-valuetext={audioTime?.duration ? `${fmtTime(audioTime.current)} of ${fmtTime(audioTime.duration)}` : "0:00"}
           style={{ background: `linear-gradient(to right, #c9a66b ${progress}%, rgba(255,255,255,.08) ${progress}%)` }}
         />
       </div>
@@ -497,7 +520,7 @@ function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onShuffleTrack
           </button>
         </div>
         <button onClick={onShuffleTracks} style={{
-          ...bS, width:34, height:34,
+          ...bS, width:44, height:44,
           color: isShuffling ? T.gold : T.text45,
           borderColor: isShuffling ? T.gold : "rgba(255,255,255,.1)",
         }} aria-label={isShuffling ? "Shuffle on" : "Shuffle off"} aria-pressed={isShuffling}>
@@ -512,7 +535,7 @@ const bS = {
   background:"none", border:"1px solid rgba(255,255,255,.1)",
   borderRadius:"50%", width:44, height:44,
   display:"flex", alignItems:"center", justifyContent:"center",
-  color:T.text65, cursor:"pointer", transition:"all .2s",
+  color:T.text65, cursor:"pointer", transition:"color .2s, border-color .2s, background .2s, opacity .2s",
 };
 const pS = {
   width:56, height:56,
@@ -548,7 +571,7 @@ function TrackList({ tracks, currentTrackIndex, onSelectTrack }) {
             <button
               key={i}
               className="track-row"
-              aria-selected={a}
+              aria-current={a ? "true" : undefined}
               onClick={() => onSelectTrack(i)}
             >
               <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, width:22, textAlign:"right", flexShrink:0, color:a ? T.gold : T.text45 }}>
@@ -581,6 +604,7 @@ function SearchPalette({ albums, onSelect, onClose }) {
   const [hi, setHi] = useState(0);
   const inputRef = useRef(null);
   const listRef = useRef(null);
+  const dialogRef = useRef(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -608,7 +632,20 @@ function SearchPalette({ albums, onSelect, onClose }) {
     if (e.key === "Escape") { onClose(); return; }
     if (e.key === "ArrowDown") { e.preventDefault(); setHi(h => Math.min(h + 1, results.length - 1)); return; }
     if (e.key === "ArrowUp")   { e.preventDefault(); setHi(h => Math.max(h - 1, 0)); return; }
-    if (e.key === "Enter" && results[hi]) { onSelect(results[hi]._idx); }
+    if (e.key === "Enter" && results[hi]) { onSelect(results[hi]._idx); return; }
+    // Focus trap
+    if (e.key === "Tab") {
+      const el = dialogRef.current;
+      if (!el) return;
+      const focusable = el.querySelectorAll('button, input, [tabindex]:not([tabindex="-1"])');
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last?.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first?.focus(); }
+      }
+    }
   }
 
   const rowS = (active) => ({
@@ -630,9 +667,11 @@ function SearchPalette({ albums, onSelect, onClose }) {
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Search albums"
+        onKeyDown={handleKeyDown}
         onClick={e => e.stopPropagation()}
         style={{
           width: "min(540px, 92vw)",
@@ -684,9 +723,9 @@ function SearchPalette({ albums, onSelect, onClose }) {
             style={{ maxHeight: 360, overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,.1) transparent" }}
           >
             {results.map((a, i) => (
-              <div
+              <button
                 key={a._idx}
-                style={rowS(i === hi)}
+                style={{ all:"unset", display:"flex", ...rowS(i === hi), width:"100%", boxSizing:"border-box" }}
                 onClick={() => onSelect(a._idx)}
                 onMouseEnter={() => setHi(i)}
               >
@@ -717,7 +756,7 @@ function SearchPalette({ albums, onSelect, onClose }) {
                     borderRadius: 3, padding: "1px 5px", flexShrink: 0,
                   }}>↵</kbd>
                 )}
-              </div>
+              </button>
             ))}
           </div>
         )}
@@ -805,7 +844,7 @@ function AlphabetScrubber({ letters, letterMap, jumpTo, onSearchOpen }) {
         background: "linear-gradient(135deg,#c9a66b,#a07d4a)",
         alignItems: "center", justifyContent: "center",
         fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 700,
-        color: "#08080c", pointerEvents: "none",
+        color: T.bg, pointerEvents: "none",
         boxShadow: "0 4px 20px rgba(0,0,0,.5)",
       }} />
 
@@ -840,8 +879,7 @@ function AlphabetScrubber({ letters, letterMap, jumpTo, onSearchOpen }) {
         </button>
         <div
           ref={stripRef}
-          role="listbox"
-          aria-label="Jump to letter"
+          aria-hidden="true"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onEnd}
@@ -851,9 +889,6 @@ function AlphabetScrubber({ letters, letterMap, jumpTo, onSearchOpen }) {
           {letters.map(l => (
             <div
               key={l}
-              role="option"
-              aria-selected={active === l}
-              aria-label={`Jump to ${l}`}
               style={{
                 width: 18, height: itemH,
                 display: "flex", alignItems: "center", justifyContent: "center",
@@ -1008,14 +1043,14 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
   };
   const numStyle = {
     flexShrink:0, width:22, height:22, borderRadius:"50%",
-    background:"rgba(201,166,107,.15)", color:"#c9a66b",
+    background:"rgba(201,166,107,.15)", color:T.gold,
     display:"flex", alignItems:"center", justifyContent:"center",
     fontSize:11, fontWeight:600, marginTop:1,
   };
   const codeStyle = {
     background:"rgba(255,255,255,.06)", borderRadius:4,
     padding:"2px 6px", fontFamily:"'DM Mono', monospace",
-    fontSize:12, color:"#e0c992", whiteSpace:"nowrap",
+    fontSize:12, color:T.goldLight, whiteSpace:"nowrap",
   };
 
   return (
@@ -1095,7 +1130,7 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
             style={{
               background:"none", border:"none", padding:0, cursor:"pointer",
               fontFamily:"'DM Sans',sans-serif", fontSize:13,
-              color:"#c9a66b", textAlign:"left",
+              color:T.gold, textAlign:"left",
               display:"flex", alignItems:"center", gap:6,
             }}
           >
@@ -1114,7 +1149,7 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
               borderRadius:10, padding:16,
               display:"flex", flexDirection:"column", gap:14,
             }}>
-              <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, fontWeight:600, color:"rgba(232,228,223,.55)", textTransform:"uppercase", letterSpacing:".08em", marginBottom:2 }}>
+              <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, fontWeight:600, color:T.text55, textTransform:"uppercase", letterSpacing:".08em", marginBottom:2 }}>
                 Method 1 — Browser Developer Tools (quickest)
               </div>
 
@@ -1128,7 +1163,7 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
               </div>
               <div style={stepStyle}>
                 <div style={numStyle}>3</div>
-                <div>Open your browser's Developer Tools (F12, or Cmd+Option+I on macOS) and go to the <strong style={{color:"#e0c992"}}>Network</strong> tab.</div>
+                <div>Open your browser's Developer Tools (F12, or Cmd+Option+I on macOS) and go to the <strong style={{color:T.goldLight}}>Network</strong> tab.</div>
               </div>
               <div style={stepStyle}>
                 <div style={numStyle}>4</div>
@@ -1137,7 +1172,7 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
 
               <div style={{ height:1, background:"rgba(255,255,255,.06)", margin:"4px 0" }} />
 
-              <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, fontWeight:600, color:"rgba(232,228,223,.55)", textTransform:"uppercase", letterSpacing:".08em", marginBottom:2 }}>
+              <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, fontWeight:600, color:T.text55, textTransform:"uppercase", letterSpacing:".08em", marginBottom:2 }}>
                 Method 2 — View XML (Plex admin only)
               </div>
 
@@ -1147,11 +1182,11 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
               </div>
               <div style={stepStyle}>
                 <div style={numStyle}>2</div>
-                <div>Click the <strong style={{color:"#e0c992"}}>···</strong> (more) menu on the item, then select <strong style={{color:"#e0c992"}}>Get Info</strong>.</div>
+                <div>Click the <strong style={{color:T.goldLight}}>···</strong> (more) menu on the item, then select <strong style={{color:T.goldLight}}>Get Info</strong>.</div>
               </div>
               <div style={stepStyle}>
                 <div style={numStyle}>3</div>
-                <div>In the info panel, click <strong style={{color:"#e0c992"}}>View XML</strong> at the bottom left. A new tab will open with XML data.</div>
+                <div>In the info panel, click <strong style={{color:T.goldLight}}>View XML</strong> at the bottom left. A new tab will open with XML data.</div>
               </div>
               <div style={stepStyle}>
                 <div style={numStyle}>4</div>
@@ -1160,7 +1195,7 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
 
               <div style={{ height:1, background:"rgba(255,255,255,.06)", margin:"4px 0" }} />
 
-              <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, fontWeight:600, color:"rgba(232,228,223,.55)", textTransform:"uppercase", letterSpacing:".08em", marginBottom:2 }}>
+              <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, fontWeight:600, color:T.text55, textTransform:"uppercase", letterSpacing:".08em", marginBottom:2 }}>
                 Method 3 — cURL (for a persistent token)
               </div>
 
@@ -1170,7 +1205,7 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
                   <div style={{
                     background:"rgba(0,0,0,.4)", borderRadius:6, padding:"10px 12px",
                     marginTop:8, fontFamily:"'DM Mono', monospace", fontSize:11,
-                    color:"rgba(232,228,223,.65)", lineHeight:1.6,
+                    color:T.text65, lineHeight:1.6,
                     overflowX:"auto", whiteSpace:"pre",
                   }}>{`curl -X POST https://plex.tv/users/sign_in.json \\
   -H "X-Plex-Client-Identifier: overflow-app" \\
@@ -1188,9 +1223,9 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
               <div style={{
                 background:"rgba(201,166,107,.08)", borderRadius:6, padding:"10px 12px",
                 fontFamily:"'DM Sans',sans-serif", fontSize:12,
-                color:"rgba(232,228,223,.5)", lineHeight:1.5, marginTop:4,
+                color:T.text50, lineHeight:1.5, marginTop:4,
               }}>
-                <strong style={{color:"#c9a66b"}}>Note:</strong> If you use two-factor authentication, append your 2FA code directly to the end of your password (e.g. <span style={codeStyle}>mypassword123456</span>). Tokens generated via the browser methods tend to be temporary. The cURL method or Plex's PIN-based auth flow are better for apps.
+                <strong style={{color:T.gold}}>Note:</strong> If you use two-factor authentication, append your 2FA code directly to the end of your password (e.g. <span style={codeStyle}>mypassword123456</span>). Tokens generated via the browser methods tend to be temporary. The cURL method or Plex's PIN-based auth flow are better for apps.
               </div>
             </div>
           )}
@@ -1202,8 +1237,8 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
               borderRadius:8, width:"100%", height:42,
               background: status === "connecting"
                 ? "rgba(201,166,107,.3)"
-                : "linear-gradient(135deg,#c9a66b,#a07d4a)",
-              border:"none", color:"#08080c",
+                : `linear-gradient(135deg,${T.gold},${T.goldDark})`,
+              border:"none", color:T.bg,
               fontFamily:"'DM Sans',sans-serif", fontSize:14, fontWeight:600,
               cursor: status === "connecting" ? "default" : "pointer",
               marginTop:4, transition:"background .2s",
@@ -1250,11 +1285,13 @@ export default function App() {
   const [plexTracks, setPlexTracks] = useState({});
 
   const albumCount = albums.length;
-  const { renderPos, settled, onWheel, onPointerDown, onPointerMove, onPointerUp, jumpTo } = useSpringCarousel(albumCount, Math.max(0, Math.min(7, albumCount - 1)));
+  const overlayOpenRef = useRef(false);
+  const { renderPos, settled, onWheel, onPointerDown, onPointerMove, onPointerUp, jumpTo } = useSpringCarousel(albumCount, Math.max(0, Math.min(7, albumCount - 1)), overlayOpenRef);
 
   const [playing, setPlaying] = useState(false);
   const [trackIdx, setTrackIdx] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [audioTime, setAudioTime] = useState({ current: 0, duration: 0 });
   const [trackShuffle, setTrackShuffle] = useState(false);
   const trackShuffleRef = useRef(false);
   const shuffleOrderRef = useRef([]);
@@ -1272,6 +1309,9 @@ export default function App() {
 
   // Keep trackShuffleRef in sync so onended closure always sees current value
   useEffect(() => { trackShuffleRef.current = trackShuffle; }, [trackShuffle]);
+
+  // Keep overlayOpenRef in sync so carousel keyboard handler ignores input when overlays are open
+  useEffect(() => { overlayOpenRef.current = showSearch || showPlex || showSettings; }, [showSearch, showPlex, showSettings]);
 
   // Build a Fisher-Yates shuffled order, placing currentIdx first
   const buildShuffleOrder = useCallback((len, currentIdx) => {
@@ -1316,7 +1356,10 @@ export default function App() {
     const audio = new Audio();
     audioRef.current = audio;
     audio.ontimeupdate = () => {
-      if (audio.duration) setProgress((audio.currentTime / audio.duration) * 100);
+      if (audio.duration) {
+        setProgress((audio.currentTime / audio.duration) * 100);
+        setAudioTime({ current: audio.currentTime, duration: audio.duration });
+      }
     };
     return () => {
       if (fadeTimerRef.current) clearInterval(fadeTimerRef.current);
@@ -1604,14 +1647,17 @@ export default function App() {
   return (
     <>
       <div style={{
-        minHeight:"100vh",
-        background:`radial-gradient(ellipse at 50% 15%, hsl(${bgH},18%,9%) 0%, #08080c 65%)`,
-        color:"#e8e4df",
+        minHeight:"100vh", background:T.bg, color:T.text,
         display:"flex", flexDirection:"column",
-        transition:"background 1.2s ease",
-        overflow:"hidden",
-        fontFamily:"'DM Sans',sans-serif",
+        overflow:"hidden", fontFamily:"'DM Sans',sans-serif",
+        position:"relative",
       }}>
+        {/* Tinted radial gradient — opacity-animated for GPU-composited transitions */}
+        <div key={bgH} style={{
+          position:"absolute", inset:0, pointerEvents:"none", zIndex:0,
+          background:`radial-gradient(ellipse at 50% 15%, hsl(${bgH},18%,9%) 0%, transparent 65%)`,
+          animation: reducedMotion ? "none" : "bgFadeIn 1.2s ease forwards",
+        }} />
         {/* Dedicated drag strip in Tauri — full width, no content, always grabbable */}
         {IS_TAURI && (
           <div data-tauri-drag-region style={{ height:36, width:"100%", flexShrink:0 }} />
@@ -1625,12 +1671,12 @@ export default function App() {
             borderRadius:10, padding:"10px 16px", display:"flex", alignItems:"center", gap:12,
             zIndex:9999, maxWidth:460, boxShadow:"0 4px 24px rgba(0,0,0,0.5)",
           }}>
-            <span style={{ fontSize:13, color:"#c9a66b", lineHeight:1.4 }}>
+            <span style={{ fontSize:13, color:T.gold, lineHeight:1.4 }}>
               Media keys unavailable. Grant Accessibility access to Overflow in{" "}
               <strong>System Settings › Privacy &amp; Security › Accessibility</strong>, then relaunch.
             </span>
             <button onClick={() => setMediaKeysError(false)} style={{
-              background:"none", border:"none", color:"rgba(232,228,223,0.45)", cursor:"pointer",
+              background:"none", border:"none", color:T.text45, cursor:"pointer",
               fontSize:16, padding:"0 2px", flexShrink:0, lineHeight:1,
             }}>✕</button>
           </div>
@@ -1639,12 +1685,12 @@ export default function App() {
         {/* Header row — logo left, controls right */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding: IS_TAURI ? "0 20px 6px" : "18px 20px 0" }}>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-            <div style={{
+            <div aria-hidden="true" style={{
               width:28, height:28, borderRadius:"50%",
-              background:"linear-gradient(135deg,#c9a66b,#a07d4a)",
+              background:`linear-gradient(135deg,${T.gold},${T.goldDark})`,
               display:"flex", alignItems:"center", justifyContent:"center",
             }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="#08080c"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill={T.bg}><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
             </div>
             <div style={{ display:"flex", alignItems:"baseline", gap:8 }}>
               <span style={{ fontFamily:"'Playfair Display',serif", fontSize:16, fontWeight:600, letterSpacing:".04em", color:T.text }}>
@@ -1665,11 +1711,11 @@ export default function App() {
               <button onClick={() => setShowSettings(s => !s)} style={{
                 background: showSettings ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.04)",
                 border:"1px solid rgba(255,255,255,.1)",
-                borderRadius:8, padding:"6px 8px",
+                borderRadius:8, padding:"10px 12px",
                 color: showSettings ? T.text : T.text55,
                 cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
                 transition:"all .15s",
-              }} aria-label="Settings">
+              }} aria-label="Settings" aria-expanded={showSettings} aria-haspopup="true">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z"/></svg>
               </button>
               {showSettings && (
@@ -1707,7 +1753,7 @@ export default function App() {
               {settled + 1} / {albums.length}
             </div>
             <button onClick={randomAlbum} title="Random album (r)" aria-label="Random album" style={{
-              background:"none", border:"none", padding:3, cursor:"pointer",
+              background:"none", border:"none", padding:"17px 14px", margin:"-17px -14px", cursor:"pointer",
               color:T.text45, display:"flex", alignItems:"center", lineHeight:1,
             }}>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
@@ -1744,7 +1790,7 @@ export default function App() {
             }}
             isShuffling={trackShuffle}
             onShuffleTracks={toggleTrackShuffle}
-            currentTrack={track} album={album} progress={progress}
+            currentTrack={track} album={album} progress={progress} audioTime={audioTime}
             onSeek={pct => {
               setProgress(pct);
               if (connected && audioRef.current?.duration) {

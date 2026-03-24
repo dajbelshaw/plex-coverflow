@@ -4,11 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Overflow — Cover Flow Music Player</title>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <!-- Fonts bundled locally via @fontsource (no CDN dependency) -->
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body, #root { height: 100%; }
       body { background: #08080c; overflow: hidden; }
+
+      @keyframes bgFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
       /* Global focus indicator */
       :focus-visible { outline: 2px solid #c9a66b; outline-offset: 2px; border-radius: 4px; }

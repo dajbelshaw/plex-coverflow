@@ -4,6 +4,27 @@ All notable changes to Overflow are listed here. Entries are written for people 
 
 ---
 
+## 1.5.0 — 2026-03-24
+
+### Improved
+- **Offline-ready fonts.** Playfair Display, DM Sans, and DM Mono are now bundled in the app rather than loaded from Google Fonts. Works without an internet connection.
+- **Reduced motion support.** Users with "Reduce motion" enabled in macOS System Settings will see instant album transitions instead of the spring animation.
+- **Background transitions are GPU-accelerated.** The album colour tint now fades via opacity rather than animating the background property directly, reducing repaint work.
+- **Touch targets enlarged.** Shuffle, settings, and random album buttons all meet the 44px minimum interactive size.
+
+### Fixed
+- Album artwork images now have proper text descriptions for screen readers.
+- The track shuffle button now correctly reports its on/off state to assistive technology.
+- The settings button now announces whether the popover is open or closed.
+- Search results are now proper interactive elements, accessible via keyboard Tab.
+- The search palette now traps focus correctly — Tab no longer escapes to background controls.
+- Arrow keys no longer move the Cover Flow carousel when a settings, search, or connect overlay is open.
+- The A–Z scrubber no longer carries misleading ARIA roles that implied keyboard support it didn't have.
+- All colour values now use the design token system consistently, fixing a class of invisible-element bugs.
+- Seek bar now announces the current time as "M:SS of M:SS" to screen readers instead of a bare number.
+
+---
+
 ## 1.4.2 — 2026-03-24
 
 ### Fixed
