@@ -4,6 +4,34 @@ All notable changes to Overflow are listed here. Entries are written for people 
 
 ---
 
+## 1.4.1 — 2026-03-24
+
+### Improved
+- **Smoother pause.** Music now fades out over 150ms when you pause or stop, instead of cutting off abruptly. Matches the feel of Winamp and Plexamp.
+
+---
+
+## 0.4.0 — 2026-03-24
+
+### New
+- **Settings menu.** A gear icon in the top-right opens a settings popover with a continuous play toggle and an after-album-ends mode (Next or Random). Settings persist across sessions.
+- **Shuffle button.** A shuffle button below the transport controls jumps to a random album. Also triggered by pressing `r`.
+- **Random album on connect.** The carousel opens on a random album each time you connect to Plex.
+- **Window persistence.** Window size and position are remembered across launches.
+- **Album art caching.** Album artwork is cached after the first load — subsequent visits are instant, even across restarts.
+
+### Improved
+- **Media key feedback.** If media key registration fails (Accessibility permission not granted), a toast message now explains what to do rather than silently failing.
+
+---
+
+## 0.3.1 — 2026-03-21
+
+### Fixed
+- Drag strip, icon visibility, and alignment polish.
+
+---
+
 ## 0.3.0 — 2026-03-20
 
 ### New
