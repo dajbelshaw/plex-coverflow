@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
 
 /* =========================================================================
    DESIGN TOKENS
@@ -1563,42 +1562,47 @@ export default function App() {
     return () => clearInterval(iv);
   }, [playing, tracks.length, connected, continuousPlay, advanceToNextAlbum]);
 
-  // Tauri: media key events
+  // MediaSession: register media key action handlers
   useEffect(() => {
-    if (!IS_TAURI) return;
-    const unsubs = Promise.all([
-      listen("media-play-pause", () => setPlaying(p => !p)),
-      listen("media-next", () => {
-        setTrackIdx(ti => {
-          if (ti + 1 >= tracks.length) {
-            if (continuousPlay) { advanceToNextAlbum(); return 0; }
-            setPlaying(false); return 0;
-          }
-          return ti + 1;
-        });
-      }),
-      listen("media-prev", () => setTrackIdx(ti => Math.max(0, ti - 1))),
-    ]);
-    return () => { unsubs.then(fns => fns.forEach(f => f())); };
+    if (!("mediaSession" in navigator)) return;
+    navigator.mediaSession.setActionHandler("play",  () => setPlaying(true));
+    navigator.mediaSession.setActionHandler("pause", () => setPlaying(false));
+    navigator.mediaSession.setActionHandler("nexttrack", () => {
+      setTrackIdx(ti => {
+        if (ti + 1 >= tracks.length) {
+          if (continuousPlay) { advanceToNextAlbum(); return 0; }
+          setPlaying(false); return 0;
+        }
+        return ti + 1;
+      });
+    });
+    navigator.mediaSession.setActionHandler("previoustrack", () =>
+      setTrackIdx(ti => Math.max(0, ti - 1))
+    );
+    return () => {
+      ["play","pause","nexttrack","previoustrack"].forEach(a =>
+        navigator.mediaSession.setActionHandler(a, null)
+      );
+    };
   }, [tracks.length, continuousPlay, advanceToNextAlbum]);
 
-  // Tauri: update tray + MPNowPlayingInfoCenter when track changes
+  // MediaSession: update Now Playing metadata when track/album changes
   useEffect(() => {
-    if (!IS_TAURI || !track) return;
-    const name = typeof track === "string" ? track : track.title;
-    invoke("update_now_playing", {
-      track:      name || "",
-      artist:     album?.artist || "",
-      album:      album?.title  || "",
-      duration:   track?.duration ? track.duration / 1000 : null,
-      artworkUrl: album?.thumbUrl || null,
-    }).catch(() => {});
+    if (!("mediaSession" in navigator) || !track) return;
+    const title = typeof track === "string" ? track : track.title;
+    const artwork = album?.thumbUrl ? [{ src: album.thumbUrl }] : [];
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title:  title || "",
+      artist: album?.artist || "",
+      album:  album?.title  || "",
+      artwork,
+    });
   }, [track, album]);
 
-  // Tauri: keep Now Playing HUD alive by syncing play/pause state
+  // MediaSession: sync playback state
   useEffect(() => {
-    if (!IS_TAURI) return;
-    invoke("set_playback_state", { playing }).catch(() => {});
+    if (!("mediaSession" in navigator)) return;
+    navigator.mediaSession.playbackState = playing ? "playing" : "paused";
   }, [playing]);
 
   const randomAlbum = useCallback(() => {
@@ -1731,7 +1735,7 @@ export default function App() {
         {/* Tinted radial gradient — opacity-animated for GPU-composited transitions */}
         <div key={bgH} style={{
           position:"absolute", inset:0, pointerEvents:"none", zIndex:0,
-          background:`radial-gradient(ellipse at 50% 15%, hsl(${bgH},18%,9%) 0%, transparent 65%)`,
+          background:`radial-gradient(ellipse at 50% 0%, hsl(${bgH},22%,11%) 0%, transparent 45%)`,
           animation: reducedMotion ? "none" : "bgFadeIn 1.2s ease forwards",
         }} />
         {/* Dedicated drag strip in Tauri — full width, no content, always grabbable */}

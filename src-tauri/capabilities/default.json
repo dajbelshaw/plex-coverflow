@@ -4,7 +4,6 @@
   "description": "Overflow default capabilities",
   "windows": ["main"],
   "permissions": [
-    "core:default",
-    "core:tray:default"
+    "core:default"
   ]
 }
