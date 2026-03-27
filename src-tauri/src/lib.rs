@@ -1,11 +1,12 @@
+mod media_bridge;
+
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, Runtime,
 };
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
-fn build_tray_menu<R: Runtime>(app: &AppHandle<R>, track: &str, artist: &str) -> tauri::Result<Menu<R>> {
+pub(crate) fn build_tray_menu<R: Runtime>(app: &AppHandle<R>, track: &str, artist: &str) -> tauri::Result<Menu<R>> {
     let label: String = if track.is_empty() {
         "Not playing".into()
     } else {
@@ -24,21 +25,6 @@ fn build_tray_menu<R: Runtime>(app: &AppHandle<R>, track: &str, artist: &str) ->
     Menu::with_items(app, &[&info, &sep1, &play, &next, &prev, &sep2, &show, &quit])
 }
 
-#[tauri::command]
-fn update_now_playing(app: AppHandle, track: String, artist: String) {
-    if let Some(tray) = app.tray_by_id("main") {
-        let tooltip: String = if track.is_empty() {
-            "Overflow".into()
-        } else {
-            format!("{} — {}", track, artist)
-        };
-        let _ = tray.set_tooltip(Some(tooltip.as_str()));
-        if let Ok(menu) = build_tray_menu(&app, &track, &artist) {
-            let _ = tray.set_menu(Some(menu));
-        }
-    }
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -47,7 +33,6 @@ pub fn run() {
                 .level(log::LevelFilter::Info)
                 .build(),
         )
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
             // ── System tray ──────────────────────────────────────────────
@@ -90,35 +75,15 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // ── Media key shortcuts ───────────────────────────────────────
-            let handle = app.handle().clone();
-            if let Err(e) = app.global_shortcut().on_shortcuts(
-                ["MediaPlayPause", "MediaTrackNext", "MediaTrackPrevious"],
-                move |_app, shortcut, event| {
-                    if event.state == ShortcutState::Pressed {
-                        let s = shortcut.to_string();
-                        let ev = if s.contains("PlayPause") {
-                            Some("media-play-pause")
-                        } else if s.contains("Next") {
-                            Some("media-next")
-                        } else if s.contains("Prev") {
-                            Some("media-prev")
-                        } else {
-                            None
-                        };
-                        if let Some(name) = ev {
-                            handle.emit(name, ()).ok();
-                        }
-                    }
-                },
-            ) {
-                eprintln!("[overflow] Could not register media keys: {e}");
-                app.emit("media-keys-error", e.to_string()).ok();
-            }
+            // ── MPRemoteCommandCenter (media keys, no Accessibility needed) ──
+            media_bridge::register_media_commands(app.handle());
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![update_now_playing])
+        .invoke_handler(tauri::generate_handler![
+            media_bridge::update_now_playing,
+            media_bridge::set_playback_state,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Overflow");
 }

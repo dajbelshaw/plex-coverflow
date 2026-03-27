@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .DS_Store
+src-tauri/swift-media/.build/
 
 # Markdown: ignore all except README and CHANGELOG
 *.md
