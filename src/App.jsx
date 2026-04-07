@@ -74,6 +74,42 @@ async function plexRate(serverUrl, token, ratingKey, rating) {
   await fetch(url, { method: "PUT", headers: { Accept: "application/json" } });
 }
 
+/* =========================================================================
+   ALBUM LIST CACHE
+   Keyed by server URL so different servers don't collide.
+   Stores raw thumb paths (not full URLs) so they survive token changes.
+   ========================================================================= */
+const ALBUM_CACHE_KEY = url => `overflow_albums_v1_${url}`;
+
+function saveAlbumCache(url, albums) {
+  try {
+    localStorage.setItem(
+      ALBUM_CACHE_KEY(url),
+      JSON.stringify({
+        cachedAt: Date.now(),
+        albums: albums.map(({ id, title, artist, year, thumb, userRating }) => ({
+          id, title, artist, year, thumb: thumb || null, userRating: userRating || 0,
+        })),
+      })
+    );
+  } catch {}
+}
+
+function loadAlbumCache(url, token) {
+  try {
+    const raw = localStorage.getItem(ALBUM_CACHE_KEY(url));
+    if (!raw) return null;
+    const { albums } = JSON.parse(raw);
+    if (!Array.isArray(albums) || albums.length === 0) return null;
+    return albums.map(a => ({
+      ...a,
+      thumbUrl: a.thumb ? plexProxyUrl(url, `${a.thumb}?X-Plex-Token=${token}`) : null,
+    }));
+  } catch {
+    return null;
+  }
+}
+
 // --- Mock Data (fallback when not connected to Plex) ---
 const ALBUMS = [
   { id: 1, title: "Rumours", artist: "Fleetwood Mac", year: 1977 },
@@ -1445,6 +1481,12 @@ export default function App() {
     }
   }, [albums, jumpTo]);
 
+  // Track settled album id so background sync can restore carousel position after a list update
+  const settledAlbumIdRef = useRef(null);
+  useEffect(() => {
+    settledAlbumIdRef.current = albums[settled]?.id ?? null;
+  }, [settled, albums]);
+
   // Auto-connect on load if credentials are saved (ref guard prevents StrictMode double-fire)
   const autoConnectAttempted = useRef(false);
   useEffect(() => {
@@ -1682,31 +1724,69 @@ export default function App() {
 
   async function handleConnect(url, tok) {
     if (!/^https?:\/\//i.test(url)) url = `http://${url}`;
-    const sectionKey = await plexFindMusicSection(url, tok);
-    const raw = await plexFetchAlbums(url, tok, sectionKey);
+
+    // Show cached albums immediately so the UI is usable before the network fetch completes
+    const cached = loadAlbumCache(url, tok);
+    const hadCache = cached != null && cached.length > 0;
+    if (hadCache && !connected) {
+      randomJumpPending.current = true;
+      setAlbums(cached);
+      setServerUrl(url);
+      setToken(tok);
+      setConnected(true);
+      setShowPlex(false);
+      localStorage.setItem("overflow_url", url);
+      localStorage.setItem("overflow_token", tok);
+    }
+
+    // Always fetch fresh from Plex to pick up additions, deletions, and rating changes
+    let sectionKey, raw;
+    try {
+      sectionKey = await plexFindMusicSection(url, tok);
+      raw = await plexFetchAlbums(url, tok, sectionKey);
+    } catch (e) {
+      if (hadCache) return; // already showing cached data — swallow the error silently
+      throw e;
+    }
+
     const mapped = raw.map(a => ({
       id: a.ratingKey,
       title: a.title,
       artist: a.parentTitle || "Unknown Artist",
       year: a.year || "",
+      thumb: a.thumb || null,
       thumbUrl: a.thumb ? plexProxyUrl(url, `${a.thumb}?X-Plex-Token=${tok}`) : null,
       userRating: a.userRating || 0,
     }));
     const sortKey = a => a.artist.replace(/^(the|a|an)\s+/i, "").toLowerCase();
     mapped.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
     if (mapped.length === 0) throw new Error("No albums found in this Plex library. Check that it contains a Music section.");
-    randomJumpPending.current = true;
-    setAlbums(mapped);
-    setPlexTracks({});
-    setTrackIdx(0);
-    setProgress(0);
-    setPlaying(false);
-    setServerUrl(url);
-    setToken(tok);
-    setConnected(true);
-    localStorage.setItem("overflow_url", url);
-    localStorage.setItem("overflow_token", tok);
-    setShowPlex(false);
+
+    saveAlbumCache(url, mapped);
+
+    if (hadCache) {
+      // Background sync: update album list, then restore carousel to the same album
+      const prevId = settledAlbumIdRef.current;
+      setAlbums(mapped);
+      if (prevId != null) {
+        const newIdx = mapped.findIndex(a => a.id === prevId);
+        if (newIdx !== -1) setTimeout(() => jumpTo(newIdx), 0);
+      }
+    } else {
+      // First connect or reconnect without a cache hit: full reset
+      randomJumpPending.current = true;
+      setAlbums(mapped);
+      setPlexTracks({});
+      setTrackIdx(0);
+      setProgress(0);
+      setPlaying(false);
+      setServerUrl(url);
+      setToken(tok);
+      setConnected(true);
+      localStorage.setItem("overflow_url", url);
+      localStorage.setItem("overflow_token", tok);
+      setShowPlex(false);
+    }
   }
 
   const { letterMap, letters } = useMemo(() => {
