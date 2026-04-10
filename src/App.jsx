@@ -684,12 +684,7 @@ function TrackList({ tracks, currentTrackIndex, onSelectTrack, onToggleTrackFavo
               <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, width:22, textAlign:"right", flexShrink:0, color:a ? T.gold : T.text45 }}>
                 {a ? "▸" : String(i+1).padStart(2,"0")}
               </span>
-              <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:14, color:a ? T.goldLight : T.text65, fontWeight:a?500:400, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", display:"flex", alignItems:"center", gap:4 }}>
-                {hot && (
-                  <svg aria-label="Hot track" width="10" height="10" viewBox="0 0 24 24" fill="#e07a30" style={{ flexShrink:0, opacity:0.85 }}>
-                    <path d="M12 23c-4.97 0-9-4.03-9-9 0-3.47 2.03-6.52 5-7.99V8c0 1.1.9 2 2 2h1V5c0-1.1.9-2 2-2s2 .9 2 2v1h1c1.1 0 2-.9 2-2V2.5c1.77 1.37 3 3.5 3 5.5 0 4.97-4.03 9-9 9zm0-2c3.86 0 7-3.14 7-7 0-1.32-.37-2.56-1.01-3.62C17.65 11.54 15.93 13 14 13h-1v-1c0-1.1-.9-2-2-2s-2 .9-2 2v2H8c-1.1 0-2-.9-2-2v-.28C4.76 12.9 4 14.37 4 16c0 2.76 2.24 5 5 5h3z"/>
-                  </svg>
-                )}
+              <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:14, color:a ? T.goldLight : T.text65, fontWeight:a?500:400, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                 {name}
               </span>
               {dur && (
@@ -712,6 +707,9 @@ function TrackList({ tracks, currentTrackIndex, onSelectTrack, onToggleTrackFavo
                     : <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z"/></svg>
                   }
                 </button>
+              )}
+              {hot && (
+                <span aria-label="Hot track" style={{ flexShrink:0, fontSize:12, lineHeight:1, marginLeft: onToggleTrackFavourite ? 2 : "auto", opacity:0.9 }}>🔥</span>
               )}
             </button>
           );
