@@ -345,7 +345,7 @@ function useSpringCarousel(itemCount, initialIndex = 7, overlayOpenRef) {
     clearTimeout(wheelTO.current);
   }, []);
 
-  return { renderPos, settled, onWheel, onPointerDown, onPointerMove, onPointerUp, jumpTo };
+  return { renderPos, settled, tgt, onWheel, onPointerDown, onPointerMove, onPointerUp, jumpTo };
 }
 
 /* =========================================================================
@@ -1412,7 +1412,7 @@ export default function App() {
 
   const albumCount = albums.length;
   const overlayOpenRef = useRef(false);
-  const { renderPos, settled, onWheel, onPointerDown, onPointerMove, onPointerUp, jumpTo } = useSpringCarousel(albumCount, Math.max(0, Math.min(7, albumCount - 1)), overlayOpenRef);
+  const { renderPos, settled, tgt: carouselTgt, onWheel, onPointerDown, onPointerMove, onPointerUp, jumpTo } = useSpringCarousel(albumCount, Math.max(0, Math.min(7, albumCount - 1)), overlayOpenRef);
 
   const [playing, setPlaying] = useState(false);
   const [trackIdx, setTrackIdx] = useState(0);
@@ -1532,11 +1532,6 @@ export default function App() {
     }
   }, [albums, jumpTo]);
 
-  // Track settled album id so background sync can restore carousel position after a list update
-  const settledAlbumIdRef = useRef(null);
-  useEffect(() => {
-    settledAlbumIdRef.current = albums[settled]?.id ?? null;
-  }, [settled, albums]);
 
   // Auto-connect on load if credentials are saved (ref guard prevents StrictMode double-fire)
   const autoConnectAttempted = useRef(false);
@@ -1821,8 +1816,11 @@ export default function App() {
     saveAlbumCache(url, mapped);
 
     if (hadCache) {
-      // Background sync: update album list, then restore carousel to the same album
-      const prevId = settledAlbumIdRef.current;
+      // Background sync: update album list, then restore carousel to the same album.
+      // Use carouselTgt.current (the spring target) rather than settled so the restore
+      // works correctly even when the spring is still animating (e.g. after the startup
+      // random jump fires before the background fetch returns).
+      const prevId = albums[carouselTgt.current]?.id ?? null;
       setAlbums(mapped);
       if (prevId != null) {
         const newIdx = mapped.findIndex(a => a.id === prevId);
