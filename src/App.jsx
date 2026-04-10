@@ -2013,7 +2013,7 @@ export default function App() {
             }}
             onToggleTrackFavourite={connected && album ? (ratingKey => toggleTrackFavourite(album.id, ratingKey)) : null}
             hotTrackRatingKeys={HOT_TRACKS_ENABLED && connected
-              ? new Set(getHotTracks(tracks).map(t => t.ratingKey))
+              ? new Set(getHotTracks(tracks, { fallbackToViews: true }).map(t => t.ratingKey))
               : null}
           />
         </div>
