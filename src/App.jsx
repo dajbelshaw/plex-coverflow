@@ -75,6 +75,53 @@ async function plexRate(serverUrl, token, ratingKey, rating) {
 }
 
 /* =========================================================================
+   FEATURE FLAGS
+   ========================================================================= */
+// Show fire icons next to hot tracks in the tracklist.
+// Hot-track scoring is an approximation of Plexamp behaviour using public
+// Plex metadata fields (ratingCount, viewCount, skipCount) — it is NOT an
+// exact reproduction of an internal Plex flag.
+const HOT_TRACKS_ENABLED = true;
+
+/* =========================================================================
+   HOT TRACKS HELPER
+   Returns the top `limit` tracks for an album, ranked by a popularity
+   score derived from public Plex metadata. Tracks with no ratingCount are
+   excluded unless fallbackToViews is true.
+
+   Fields used (all optional — defaults to 0 if absent):
+     ratingCount — Last.fm-style scrobble/listener count
+     viewCount   — number of times the track has been played in Plex
+     skipCount   — number of times the track was skipped
+     index       — track number within the album (tie-breaker)
+   ========================================================================= */
+function getHotTracks(tracks, { limit = 3, fallbackToViews = false } = {}) {
+  if (!tracks?.length) return [];
+  const scored = tracks
+    .map((track) => {
+      const ratingCount = Number(track.ratingCount || 0);
+      const viewCount   = Number(track.viewCount   || 0);
+      const skipCount   = Number(track.skipCount   || 0);
+      const trackIndex  = Number(track.index       || 0);
+      const hasPopularity = ratingCount > 0;
+      const baseScore     = (ratingCount * 100) + (viewCount * 10) - (skipCount * 5);
+      const fallbackScore = viewCount - (skipCount * 2);
+      return {
+        track,
+        hasPopularity,
+        score: hasPopularity ? baseScore : fallbackScore,
+        trackIndex,
+      };
+    })
+    .filter((item) => item.hasPopularity || fallbackToViews)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.trackIndex - b.trackIndex;
+    });
+  return scored.slice(0, limit).map((item) => item.track);
+}
+
+/* =========================================================================
    ALBUM LIST CACHE
    Keyed by server URL so different servers don't collide.
    Stores raw thumb paths (not full URLs) so they survive token changes.
@@ -603,7 +650,7 @@ const pS = {
 /* =========================================================================
    TRACK LIST
    ========================================================================= */
-function TrackList({ tracks, currentTrackIndex, onSelectTrack, onToggleTrackFavourite }) {
+function TrackList({ tracks, currentTrackIndex, onSelectTrack, onToggleTrackFavourite, hotTrackRatingKeys }) {
   if (!tracks?.length) return null;
   return (
     <div style={{ maxWidth:480, margin:"0 auto", padding:"0 20px", height:"100%", display:"flex", flexDirection:"column" }}>
@@ -626,6 +673,7 @@ function TrackList({ tracks, currentTrackIndex, onSelectTrack, onToggleTrackFavo
               ? `${Math.floor(t.duration/60000)}:${String(Math.floor((t.duration%60000)/1000)).padStart(2,"0")}`
               : null;
           const fav = t.userRating > 0;
+          const hot = HOT_TRACKS_ENABLED && hotTrackRatingKeys?.has(t.ratingKey);
           return (
             <button
               key={i}
@@ -636,7 +684,12 @@ function TrackList({ tracks, currentTrackIndex, onSelectTrack, onToggleTrackFavo
               <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, width:22, textAlign:"right", flexShrink:0, color:a ? T.gold : T.text45 }}>
                 {a ? "▸" : String(i+1).padStart(2,"0")}
               </span>
-              <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:14, color:a ? T.goldLight : T.text65, fontWeight:a?500:400, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+              <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:14, color:a ? T.goldLight : T.text65, fontWeight:a?500:400, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", display:"flex", alignItems:"center", gap:4 }}>
+                {hot && (
+                  <svg aria-label="Hot track" width="10" height="10" viewBox="0 0 24 24" fill="#e07a30" style={{ flexShrink:0, opacity:0.85 }}>
+                    <path d="M12 23c-4.97 0-9-4.03-9-9 0-3.47 2.03-6.52 5-7.99V8c0 1.1.9 2 2 2h1V5c0-1.1.9-2 2-2s2 .9 2 2v1h1c1.1 0 2-.9 2-2V2.5c1.77 1.37 3 3.5 3 5.5 0 4.97-4.03 9-9 9zm0-2c3.86 0 7-3.14 7-7 0-1.32-.37-2.56-1.01-3.62C17.65 11.54 15.93 13 14 13h-1v-1c0-1.1-.9-2-2-2s-2 .9-2 2v2H8c-1.1 0-2-.9-2-2v-.28C4.76 12.9 4 14.37 4 16c0 2.76 2.24 5 5 5h3z"/>
+                  </svg>
+                )}
                 {name}
               </span>
               {dur && (
@@ -1509,6 +1562,11 @@ export default function App() {
           partKey: t.Media?.[0]?.Part?.[0]?.key || null,
           ratingKey: t.ratingKey,
           userRating: t.userRating || 0,
+          // Popularity fields used by getHotTracks()
+          ratingCount: t.ratingCount || 0,
+          viewCount:   t.viewCount   || 0,
+          skipCount:   t.skipCount   || 0,
+          index:       t.index       || 0,
         }));
         setPlexTracks(prev => ({ ...prev, [album.id]: mapped }));
       })
@@ -1954,6 +2012,9 @@ export default function App() {
               setPlaying(true);
             }}
             onToggleTrackFavourite={connected && album ? (ratingKey => toggleTrackFavourite(album.id, ratingKey)) : null}
+            hotTrackRatingKeys={HOT_TRACKS_ENABLED && connected
+              ? new Set(getHotTracks(tracks).map(t => t.ratingKey))
+              : null}
           />
         </div>
 
