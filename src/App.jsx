@@ -708,8 +708,8 @@ function TrackList({ tracks, currentTrackIndex, onSelectTrack, onToggleTrackFavo
                   }
                 </button>
               )}
-              {hot && (
-                <span aria-label="Hot track" style={{ flexShrink:0, fontSize:12, lineHeight:1, marginLeft: onToggleTrackFavourite ? 2 : "auto", opacity:0.9 }}>🔥</span>
+              {HOT_TRACKS_ENABLED && (
+                <span aria-label={hot ? "Hot track" : undefined} style={{ flexShrink:0, fontSize:12, lineHeight:1, width:20, textAlign:"center", opacity: hot ? 0.9 : 0 }}>🔥</span>
               )}
             </button>
           );
