@@ -74,6 +74,11 @@ async function plexRate(serverUrl, token, ratingKey, rating) {
   await fetch(url, { method: "PUT", headers: { Accept: "application/json" } });
 }
 
+async function plexDeleteItem(serverUrl, token, ratingKey) {
+  const url = plexProxyUrl(serverUrl, `/library/metadata/${ratingKey}?X-Plex-Token=${token}`);
+  await fetch(url, { method: "DELETE", headers: { Accept: "application/json" } });
+}
+
 /* =========================================================================
    FEATURE FLAGS
    ========================================================================= */
@@ -127,6 +132,8 @@ function getHotTracks(tracks, { limit = 3, fallbackToViews = false } = {}) {
    Stores raw thumb paths (not full URLs) so they survive token changes.
    ========================================================================= */
 const ALBUM_CACHE_KEY = url => `overflow_albums_v1_${url}`;
+const HIDDEN_ALBUMS_KEY = url => `overflow_hidden_albums_v1_${url}`;
+const HIDDEN_TRACKS_KEY = url => `overflow_hidden_tracks_v1_${url}`;
 
 function saveAlbumCache(url, albums) {
   try {
@@ -457,7 +464,7 @@ function ArtSVG({ album, size }) {
    - All transforms computed per rAF frame, ZERO CSS transitions on covers
    - GPU-composited: only transform + opacity + filter
    ========================================================================= */
-function CoverFlow({ albums, renderPos, settled, onWheel, onPointerDown, onPointerMove, onPointerUp, jumpTo }) {
+function CoverFlow({ albums, renderPos, settled, onWheel, onPointerDown, onPointerMove, onPointerUp, jumpTo, editMode, onRemoveAlbum }) {
   const ref = useRef(null);
   const SZ = 220;
   const GAP = 64;
@@ -553,6 +560,25 @@ function CoverFlow({ albums, renderPos, settled, onWheel, onPointerDown, onPoint
             }}
           >
             <AlbumArt album={album} size={SZ} withReflection />
+            {editMode && Math.abs(off) < 0.5 && (
+              <button
+                onClick={e => { e.stopPropagation(); onRemoveAlbum(album); }}
+                aria-label={`Remove ${album.title}`}
+                style={{
+                  position:"absolute", top:6, right:6,
+                  background:"rgba(0,0,0,.72)", border:"1px solid rgba(255,255,255,.22)",
+                  borderRadius:"50%", width:26, height:26,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  color:"#fff", cursor:"pointer", zIndex:1, lineHeight:1,
+                  transition:"background .15s, border-color .15s",
+                  pointerEvents:"all",
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                </svg>
+              </button>
+            )}
           </div>
         );
       })}
@@ -650,7 +676,7 @@ const pS = {
 /* =========================================================================
    TRACK LIST
    ========================================================================= */
-function TrackList({ tracks, currentTrackIndex, onSelectTrack, onToggleTrackFavourite, hotTrackRatingKeys }) {
+function TrackList({ tracks, currentTrackIndex, onSelectTrack, onToggleTrackFavourite, hotTrackRatingKeys, editMode, onHideTrack }) {
   if (!tracks?.length) return null;
   return (
     <div style={{ maxWidth:480, margin:"0 auto", padding:"0 20px", height:"100%", display:"flex", flexDirection:"column" }}>
@@ -710,6 +736,20 @@ function TrackList({ tracks, currentTrackIndex, onSelectTrack, onToggleTrackFavo
               )}
               {HOT_TRACKS_ENABLED && (
                 <span aria-label={hot ? "Hot track" : undefined} style={{ flexShrink:0, fontSize:12, lineHeight:1, width:20, textAlign:"center", opacity: hot ? 0.9 : 0 }}>🔥</span>
+              )}
+              {editMode && onHideTrack && typeof t !== "string" && (
+                <button
+                  className="track-hide"
+                  onClick={e => { e.stopPropagation(); onHideTrack(t.ratingKey, t.title); }}
+                  aria-label={`Hide track ${t.title}`}
+                  style={{ all:"unset", cursor:"pointer", flexShrink:0, display:"flex", alignItems:"center",
+                    color:T.red, lineHeight:1, padding:"4px 4px", margin:"-4px -4px", opacity:0.7,
+                  }}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                  </svg>
+                </button>
               )}
             </button>
           );
@@ -1410,7 +1450,21 @@ export default function App() {
   // Tracks keyed by album id/ratingKey — loaded lazily per album
   const [plexTracks, setPlexTracks] = useState({});
 
-  const albumCount = albums.length;
+  // Hidden items — persisted per server URL so different servers don't interfere
+  const [hiddenAlbumIds, setHiddenAlbumIds] = useState(() => {
+    const url = localStorage.getItem("overflow_url") || "";
+    if (!url) return new Set();
+    try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_ALBUMS_KEY(url)) || "[]")); } catch { return new Set(); }
+  });
+  const [hiddenTrackIds, setHiddenTrackIds] = useState(() => {
+    const url = localStorage.getItem("overflow_url") || "";
+    if (!url) return new Set();
+    try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_TRACKS_KEY(url)) || "[]")); } catch { return new Set(); }
+  });
+
+  const visibleAlbums = useMemo(() => albums.filter(a => !hiddenAlbumIds.has(a.id)), [albums, hiddenAlbumIds]);
+
+  const albumCount = visibleAlbums.length;
   const overlayOpenRef = useRef(false);
   const { renderPos, settled, tgt: carouselTgt, onWheel, onPointerDown, onPointerMove, onPointerUp, jumpTo } = useSpringCarousel(albumCount, Math.max(0, Math.min(7, albumCount - 1)), overlayOpenRef);
 
@@ -1424,6 +1478,9 @@ export default function App() {
   const shufflePosRef = useRef(0);
   const [showPlex, setShowPlex] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // { kind:'album'|'track', id, name, albumId? }
+  const [deleteError, setDeleteError] = useState("");
 
   // Settings (persisted to localStorage)
   const [continuousPlay, setContinuousPlay] = useState(() => localStorage.getItem("overflow_continuous") === "true");
@@ -1436,7 +1493,7 @@ export default function App() {
   useEffect(() => { trackShuffleRef.current = trackShuffle; }, [trackShuffle]);
 
   // Keep overlayOpenRef in sync so carousel keyboard handler ignores input when overlays are open
-  useEffect(() => { overlayOpenRef.current = showSearch || showPlex || showSettings; }, [showSearch, showPlex, showSettings]);
+  useEffect(() => { overlayOpenRef.current = showSearch || showPlex || showSettings || !!deleteConfirm; }, [showSearch, showPlex, showSettings, deleteConfirm]);
 
   // Build a Fisher-Yates shuffled order, placing currentIdx first
   const buildShuffleOrder = useCallback((len, currentIdx) => {
@@ -1493,10 +1550,11 @@ export default function App() {
     };
   }, []);
 
-  const album = albums[settled] || albums[0];
-  const tracks = connected
+  const album = visibleAlbums[settled] || visibleAlbums[0];
+  const allTracks = connected
     ? (plexTracks[album?.id] || [])
     : (TRACKS[album?.id] || []);
+  const tracks = allTracks.filter(t => typeof t === "string" || !hiddenTrackIds.has(t.ratingKey));
   const track = tracks[trackIdx] || null;
 
   const toggleTrackShuffle = useCallback(() => {
@@ -1699,11 +1757,47 @@ export default function App() {
   }, [playing]);
 
   const randomAlbum = useCallback(() => {
-    if (albums.length <= 1) return;
+    if (visibleAlbums.length <= 1) return;
     let idx;
-    do { idx = Math.floor(Math.random() * albums.length); } while (idx === settled && albums.length > 1);
+    do { idx = Math.floor(Math.random() * visibleAlbums.length); } while (idx === settled && visibleAlbums.length > 1);
     jumpTo(idx);
-  }, [albums.length, settled, jumpTo]);
+  }, [visibleAlbums.length, settled, jumpTo]);
+
+  const hideAlbum = useCallback((id) => {
+    setHiddenAlbumIds(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      try { localStorage.setItem(HIDDEN_ALBUMS_KEY(serverUrl), JSON.stringify([...next])); } catch {}
+      return next;
+    });
+    // After hiding, clamp carousel if we were on the last album
+    const newMaxIdx = visibleAlbums.length - 2; // new length = current - 1
+    setTimeout(() => jumpTo(Math.min(settled, Math.max(0, newMaxIdx))), 0);
+    setDeleteConfirm(null);
+  }, [serverUrl, settled, visibleAlbums.length, jumpTo]);
+
+  const hideTrack = useCallback((ratingKey) => {
+    setHiddenTrackIds(prev => {
+      const next = new Set(prev);
+      next.add(ratingKey);
+      try { localStorage.setItem(HIDDEN_TRACKS_KEY(serverUrl), JSON.stringify([...next])); } catch {}
+      return next;
+    });
+    setDeleteConfirm(null);
+  }, [serverUrl]);
+
+  const performDeleteFromPlex = useCallback(async () => {
+    if (!deleteConfirm) return;
+    const { kind, id } = deleteConfirm;
+    try {
+      await plexDeleteItem(serverUrl, token, id);
+    } catch {
+      setDeleteError("Could not delete from Plex. Hiding from app only.");
+      setTimeout(() => setDeleteError(""), 3500);
+    }
+    if (kind === "album") hideAlbum(id);
+    else hideTrack(id);
+  }, [deleteConfirm, serverUrl, token, hideAlbum, hideTrack]);
 
   const toggleFavourite = useCallback(() => {
     if (!album || !serverUrl || !token) return;
@@ -1729,17 +1823,19 @@ export default function App() {
     });
   }, [serverUrl, token]);
 
-  // Keyboard shortcuts: "/" search, "r" random, "f" favourite, "," prev track, "." next track
+  // Keyboard shortcuts: "/" search, "r" random, "f" favourite, "e" edit mode, "," prev track, "." next track
   useEffect(() => {
     const h = (e) => {
       if (document.activeElement?.tagName === "INPUT") return;
       if (e.metaKey || e.ctrlKey) return;
+      if (e.key === "Escape" && deleteConfirm) { setDeleteConfirm(null); return; }
       if (e.key === "/" && !showSearch && !showPlex) {
         e.preventDefault();
         setShowSearch(true);
       }
       if (e.key === "r" && !showSearch && !showPlex) randomAlbum();
       if (e.key === "f" && !showSearch && !showPlex) toggleFavourite();
+      if (e.key === "e" && !showSearch && !showPlex && connected) setEditMode(m => !m);
       if (e.key === "," && !showSearch && !showPlex) {
         setTrackIdx(i => Math.max(0, i - 1));
         setProgress(0);
@@ -1753,7 +1849,7 @@ export default function App() {
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [showSearch, showPlex, randomAlbum, toggleFavourite, tracks.length]);
+  }, [showSearch, showPlex, randomAlbum, toggleFavourite, tracks.length, deleteConfirm, connected]);
 
   // Reset on album change (skip stopping playback if continuous play triggered the advance)
   const prevSettled = useRef(settled);
@@ -1775,6 +1871,10 @@ export default function App() {
 
   async function handleConnect(url, tok) {
     if (!/^https?:\/\//i.test(url)) url = `http://${url}`;
+
+    // Load hidden IDs for this server (covers connecting to a different server mid-session)
+    try { setHiddenAlbumIds(new Set(JSON.parse(localStorage.getItem(HIDDEN_ALBUMS_KEY(url)) || "[]"))); } catch { setHiddenAlbumIds(new Set()); }
+    try { setHiddenTrackIds(new Set(JSON.parse(localStorage.getItem(HIDDEN_TRACKS_KEY(url)) || "[]"))); } catch { setHiddenTrackIds(new Set()); }
 
     // Show cached albums immediately so the UI is usable before the network fetch completes
     const cached = loadAlbumCache(url, tok);
@@ -1845,7 +1945,7 @@ export default function App() {
 
   const { letterMap, letters } = useMemo(() => {
     const map = {};
-    albums.forEach((a, i) => {
+    visibleAlbums.forEach((a, i) => {
       const ch = a.artist.replace(/^(the|a|an)\s+/i, "").charAt(0).toUpperCase();
       const key = /[A-Z]/.test(ch) ? ch : "#";
       if (!(key in map)) map[key] = i;
@@ -1900,8 +2000,20 @@ export default function App() {
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
             {connected && (
               <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, color:T.text65, letterSpacing:".04em" }}>
-                {albums.length} albums
+                {visibleAlbums.length} albums
               </span>
+            )}
+            {connected && (
+              <button onClick={() => setEditMode(m => !m)} style={{
+                background: editMode ? "rgba(224,112,112,.12)" : "rgba(255,255,255,.04)",
+                border: editMode ? "1px solid rgba(224,112,112,.3)" : "1px solid rgba(255,255,255,.1)",
+                borderRadius:8, padding:"10px 12px",
+                color: editMode ? T.red : T.text55,
+                cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                transition:"all .15s",
+              }} aria-label={editMode ? "Exit edit mode" : "Edit library (e)"} aria-pressed={editMode} title={editMode ? "Exit edit mode (e)" : "Edit library (e)"}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+              </button>
             )}
             <div style={{ position:"relative" }}>
               <button onClick={() => setShowSettings(s => !s)} style={{
@@ -1943,25 +2055,32 @@ export default function App() {
           </div>
         )}
 
-        {albums.length > 0 && (
+        {visibleAlbums.length > 0 && (
           <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:"0 0 2px", position:"relative", zIndex:1 }}>
-            <button onClick={randomAlbum} title="Random album (r)" aria-label="Random album" style={{
-              background:"none", border:"none",
-              padding:"6px 10px 6px 8px", cursor:"pointer",
-              color:T.text45, display:"flex", alignItems:"center", gap:5,
-              fontFamily:"'DM Sans',sans-serif", fontSize:11,
-            }}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
-              Random album
-            </button>
+            {editMode
+              ? <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:11, color:T.red, letterSpacing:".08em", textTransform:"uppercase", opacity:.7 }}>
+                  Edit mode · scroll to album and click ✕ to remove
+                </span>
+              : <button onClick={randomAlbum} title="Random album (r)" aria-label="Random album" style={{
+                  background:"none", border:"none",
+                  padding:"6px 10px 6px 8px", cursor:"pointer",
+                  color:T.text45, display:"flex", alignItems:"center", gap:5,
+                  fontFamily:"'DM Sans',sans-serif", fontSize:11,
+                }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+                  Random album
+                </button>
+            }
           </div>
         )}
 
         <CoverFlow
-          albums={albums} renderPos={renderPos} settled={settled}
+          albums={visibleAlbums} renderPos={renderPos} settled={settled}
           onWheel={onWheel} onPointerDown={onPointerDown}
           onPointerMove={onPointerMove} onPointerUp={onPointerUp}
           jumpTo={jumpTo}
+          editMode={editMode}
+          onRemoveAlbum={a => setDeleteConfirm({ kind: "album", id: a.id, name: a.title })}
         />
 
         <div style={{ padding:"6px 0 14px", flexShrink:0 }}>
@@ -2011,6 +2130,8 @@ export default function App() {
             hotTrackRatingKeys={HOT_TRACKS_ENABLED && connected
               ? new Set(getHotTracks(tracks, { fallbackToViews: true }).map(t => t.ratingKey))
               : null}
+            editMode={editMode}
+            onHideTrack={connected && album ? ((ratingKey, name) => setDeleteConfirm({ kind: "track", id: ratingKey, name, albumId: album.id })) : null}
           />
         </div>
 
@@ -2018,9 +2139,9 @@ export default function App() {
           <AlphabetScrubber letters={letters} letterMap={letterMap} jumpTo={jumpTo} onSearchOpen={() => setShowSearch(true)} />
         )}
 
-        {showSearch && albums.length > 0 && (
+        {showSearch && visibleAlbums.length > 0 && (
           <SearchPalette
-            albums={albums}
+            albums={visibleAlbums}
             onSelect={idx => { jumpTo(idx); setShowSearch(false); }}
             onClose={() => setShowSearch(false)}
           />
@@ -2033,6 +2154,90 @@ export default function App() {
           initialToken={token}
           onConnect={handleConnect}
         />
+
+        {/* Delete / Hide confirmation modal */}
+        {deleteConfirm && (
+          <div
+            style={{
+              position:"fixed", inset:0, zIndex:10001,
+              background:"rgba(0,0,0,.6)", backdropFilter:"blur(6px)",
+              display:"flex", alignItems:"center", justifyContent:"center",
+            }}
+            onClick={() => setDeleteConfirm(null)}
+          >
+            <div
+              style={{
+                background:"rgba(18,18,24,.98)", border:"1px solid rgba(255,255,255,.1)",
+                borderRadius:14, padding:"24px 28px", maxWidth:320, width:"90%",
+                display:"flex", flexDirection:"column", gap:16,
+                boxShadow:"0 20px 60px rgba(0,0,0,.7)",
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div>
+                <div style={{ fontFamily:"'Playfair Display',serif", fontSize:16, color:T.text, marginBottom:4 }}>
+                  Remove "{deleteConfirm.name}"?
+                </div>
+                <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, color:T.text45 }}>
+                  {deleteConfirm.kind === "album" ? "Choose how to remove this album." : "Choose how to remove this track."}
+                </div>
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                <button
+                  onClick={() => deleteConfirm.kind === "album" ? hideAlbum(deleteConfirm.id) : hideTrack(deleteConfirm.id)}
+                  style={{
+                    background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.12)",
+                    borderRadius:8, padding:"11px 16px", color:T.text,
+                    fontFamily:"'DM Sans',sans-serif", fontSize:14, cursor:"pointer", textAlign:"left",
+                  }}
+                >
+                  Hide from app
+                  <div style={{ fontSize:11, color:T.text45, marginTop:3 }}>
+                    Won't come back on sync. Reversible by clearing app data.
+                  </div>
+                </button>
+                {connected && (
+                  <button
+                    onClick={performDeleteFromPlex}
+                    style={{
+                      background:"rgba(224,112,112,.08)", border:"1px solid rgba(224,112,112,.22)",
+                      borderRadius:8, padding:"11px 16px", color:T.red,
+                      fontFamily:"'DM Sans',sans-serif", fontSize:14, cursor:"pointer", textAlign:"left",
+                    }}
+                  >
+                    Delete from Plex
+                    <div style={{ fontSize:11, color:"rgba(224,112,112,.65)", marginTop:3 }}>
+                      Removes from your Plex library permanently.
+                    </div>
+                  </button>
+                )}
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  style={{
+                    background:"none", border:"none", padding:"8px 16px",
+                    color:T.text45, fontFamily:"'DM Sans',sans-serif",
+                    fontSize:13, cursor:"pointer", textAlign:"center",
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Error toast for failed server deletes */}
+        {deleteError && (
+          <div style={{
+            position:"fixed", bottom:24, left:"50%", transform:"translateX(-50%)",
+            background:"rgba(224,112,112,.14)", border:"1px solid rgba(224,112,112,.3)",
+            borderRadius:8, padding:"10px 18px",
+            color:T.red, fontFamily:"'DM Sans',sans-serif", fontSize:13,
+            zIndex:10002, whiteSpace:"nowrap",
+          }}>
+            {deleteError}
+          </div>
+        )}
       </div>
     </>
   );
