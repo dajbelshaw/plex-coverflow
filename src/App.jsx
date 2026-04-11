@@ -562,6 +562,7 @@ function CoverFlow({ albums, renderPos, settled, onWheel, onPointerDown, onPoint
             <AlbumArt album={album} size={SZ} withReflection />
             {editMode && Math.abs(off) < 0.5 && (
               <button
+                onPointerDown={e => e.stopPropagation()}
                 onClick={e => { e.stopPropagation(); onRemoveAlbum(album); }}
                 aria-label={`Remove ${album.title}`}
                 style={{
