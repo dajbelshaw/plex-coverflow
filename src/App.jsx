@@ -1010,7 +1010,7 @@ const FavTrackRow = memo(function FavTrackRow({ index, style, tracks, onPlay, cu
   return (
     <div style={style}>
       <button
-        onClick={() => onPlay(t)}
+        onClick={() => onPlay(t, tracks)}
         aria-label={`Play ${t.title} by ${t.artist}`}
         style={{
           all: "unset", display: "flex", alignItems: "center", gap: 14,
@@ -1127,8 +1127,8 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
     if (!sortedTracks.length) return;
     setShuffling(true);
     setTimeout(() => setShuffling(false), 600);
-    const pick = sortedTracks[Math.floor(Math.random() * sortedTracks.length)];
-    onPlay(pick);
+    const shuffled = [...sortedTracks].sort(() => Math.random() - 0.5);
+    onPlay(shuffled[0], shuffled);
   }
 
   const SORT_OPTS = [
@@ -1846,6 +1846,7 @@ export default function App() {
 
   // Keep overlayOpenRef in sync so carousel keyboard handler ignores input when overlays are open
   useEffect(() => { overlayOpenRef.current = showSearch || showPlex || showSettings || showFavourites || !!deleteConfirm; }, [showSearch, showPlex, showSettings, showFavourites, deleteConfirm]);
+  useEffect(() => { showFavouritesRef.current = showFavourites; }, [showFavourites]);
 
   // Build a Fisher-Yates shuffled order, placing currentIdx first
   const buildShuffleOrder = useCallback((len, currentIdx) => {
@@ -1865,6 +1866,11 @@ export default function App() {
   const fadeTimerRef = useRef(null);
   // Pending play from Favourites: { albumId, ratingKey } — consumed once tracks load and carousel settles
   const pendingPlayRef = useRef(null);
+  // Favourites queue: { tracks: [...], idx: N } — set when playing from the Favourites panel
+  // so track-end advances through the fav list instead of the album track list
+  const favQueueRef = useRef(null);
+  const showFavouritesRef = useRef(false);
+  const playFromFavouritesRef = useRef(null);
 
   // Fade volume to 0 over ~150ms then pause; restores volume for next play
   const fadeAndPause = useCallback((audio) => {
@@ -1999,6 +2005,17 @@ export default function App() {
     const audio = audioRef.current;
     if (!audio) return;
     audio.onended = () => {
+      // While Favourites is open, advance through the fav queue instead of the album
+      if (showFavouritesRef.current && favQueueRef.current) {
+        const { tracks: favTracks, idx } = favQueueRef.current;
+        const nextIdx = idx + 1;
+        if (nextIdx < favTracks.length) {
+          playFromFavouritesRef.current?.(favTracks[nextIdx], favTracks);
+        } else {
+          setPlaying(false);
+        }
+        return;
+      }
       if (trackShuffleRef.current) {
         const order = shuffleOrderRef.current;
         const nextPos = shufflePosRef.current + 1;
@@ -2193,13 +2210,19 @@ export default function App() {
     });
   }, [serverUrl, token]);
 
-  const playFromFavourites = useCallback((favTrack) => {
+  const playFromFavourites = useCallback((favTrack, sortedFavTracks) => {
     // Stay in Favourites view — carousel navigates silently in the background
+    if (sortedFavTracks) {
+      const idx = sortedFavTracks.findIndex(t => t.ratingKey === favTrack.ratingKey);
+      favQueueRef.current = { tracks: sortedFavTracks, idx };
+    }
     const albumIdx = visibleAlbums.findIndex(a => a.id === favTrack.albumId);
     if (albumIdx === -1) return;
     pendingPlayRef.current = { albumId: favTrack.albumId, ratingKey: favTrack.ratingKey };
     jumpTo(albumIdx);
   }, [visibleAlbums, jumpTo]);
+
+  useEffect(() => { playFromFavouritesRef.current = playFromFavourites; }, [playFromFavourites]);
 
   // Keyboard shortcuts: "/" search, "r" random, "f" favourite, "e" edit mode, "," prev track, "." next track
   useEffect(() => {
@@ -2508,7 +2531,7 @@ export default function App() {
             token={token}
             sectionKey={sectionKey}
             onPlay={playFromFavourites}
-            onClose={() => setShowFavourites(false)}
+            onClose={() => { setShowFavourites(false); favQueueRef.current = null; }}
             currentRatingKey={track?.ratingKey}
           />
         ) : (
