@@ -81,20 +81,13 @@ async function plexDeleteItem(serverUrl, token, ratingKey) {
 }
 
 async function plexFetchFavouriteTracks(serverUrl, token, sectionKey) {
-  // Fetch rated tracks and rated albums in parallel.
-  // Tracks that belong to a rated album were hearted at album level (e.g. in
-  // Plexamp), not individually — exclude them so we only show individually-
-  // favourited tracks.
-  const [tracksData, albumsData] = await Promise.all([
-    plexFetch(`${serverUrl}/library/sections/${sectionKey}/all?type=10&sort=addedAt%3Adesc&userRating%3E%3E0=1&X-Plex-Token=${token}`),
-    plexFetch(`${serverUrl}/library/sections/${sectionKey}/all?type=9&userRating%3E%3E0=1&X-Plex-Token=${token}`),
-  ]);
-  const ratedAlbumKeys = new Set(
-    (albumsData.MediaContainer.Metadata || []).map(a => a.ratingKey)
+  // Plex propagates track ratings up to the parent album, so there's no
+  // reliable API-level way to distinguish "album hearted" from "track hearted".
+  // Just return all individually-rated tracks sorted by most recently added.
+  const data = await plexFetch(
+    `${serverUrl}/library/sections/${sectionKey}/all?type=10&sort=addedAt%3Adesc&userRating%3E%3E0=1&X-Plex-Token=${token}`
   );
-  return (tracksData.MediaContainer.Metadata || []).filter(
-    t => !ratedAlbumKeys.has(t.parentRatingKey)
-  );
+  return data.MediaContainer.Metadata || [];
 }
 
 /* =========================================================================
@@ -1252,8 +1245,8 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
         )}
         {!loading && !error && tracks.length === 0 && (
           <div style={{ padding: "40px 20px", textAlign: "center", color: T.text45, fontFamily: "'DM Sans',sans-serif", fontSize: 14 }}>
-            No individually starred tracks yet.
-            <div style={{ fontSize: 12, marginTop: 6, opacity: .6 }}>Star individual tracks using the ★ icon in the tracklist.</div>
+            No starred tracks yet.
+            <div style={{ fontSize: 12, marginTop: 6, opacity: .6 }}>Star tracks using the ★ icon in the tracklist.</div>
           </div>
         )}
 
