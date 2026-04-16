@@ -1077,7 +1077,7 @@ const FavTrackRow = memo(function FavTrackRow({ index, style, tracks, onPlay, cu
    - Fetches only individually-rated tracks (album-rated tracks excluded)
    - Click a track to play it; PlayerControls remains visible below
    ========================================================================= */
-function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, currentRatingKey }) {
+function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, currentRatingKey, playing, onPlayPause, onFavPrev, onFavNext, progress, audioTime, onSeek }) {
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1122,6 +1122,12 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
 
   // Stable rowProps so react-window rows don't re-render on unrelated state changes
   const rowProps = useMemo(() => ({ tracks: sortedTracks, onPlay, currentRatingKey }), [sortedTracks, onPlay, currentRatingKey]);
+
+  // Track currently playing (for integrated controls bar)
+  const playingFavTrack = useMemo(() =>
+    currentRatingKey ? tracks.find(t => t.ratingKey === currentRatingKey) : null,
+    [tracks, currentRatingKey]
+  );
 
   function shufflePlay() {
     if (!sortedTracks.length) return;
@@ -1274,6 +1280,116 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
               style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,.1) transparent" }}
             />
           )}
+        </div>
+
+        {/* ── Integrated playback controls ─────────────────────────── */}
+        <div style={{
+          flexShrink: 0,
+          borderTop: "1px solid rgba(255,255,255,.08)",
+          padding: "12px 20px 18px",
+          display: "flex", flexDirection: "column", gap: 10,
+        }}>
+          {/* Row 1: art + info + transport */}
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            {/* Album art */}
+            <div style={{ width: 48, height: 48, borderRadius: 6, overflow: "hidden", flexShrink: 0, boxShadow: "0 2px 12px rgba(0,0,0,.5)" }}>
+              {playingFavTrack?.thumbUrl
+                ? <img src={playingFavTrack.thumbUrl} alt="" width={48} height={48} loading="lazy"
+                    style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
+                : <AlbumArt album={{ id: playingFavTrack?.albumId ?? 0, title: playingFavTrack?.albumTitle ?? "", artist: playingFavTrack?.artist ?? "" }} size={48} />
+              }
+            </div>
+            {/* Track info */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontFamily: "'Playfair Display',serif", fontSize: 15, fontWeight: 600,
+                color: playingFavTrack ? T.text : T.text45,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>
+                {playingFavTrack?.title || "Nothing playing"}
+              </div>
+              <div style={{
+                fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: T.text50, marginTop: 3,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>
+                {playingFavTrack
+                  ? [playingFavTrack.artist, playingFavTrack.albumTitle].filter(Boolean).join(" · ")
+                  : "Select a track above to play"}
+              </div>
+            </div>
+            {/* Transport buttons */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+              <button
+                onClick={onFavPrev}
+                aria-label="Previous favourite track"
+                style={{
+                  background: "none", border: "1px solid rgba(255,255,255,.1)",
+                  borderRadius: "50%", width: 38, height: 38, cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: T.text65, transition: "color .15s, border-color .15s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.color = T.text; e.currentTarget.style.borderColor = "rgba(255,255,255,.3)"; }}
+                onMouseLeave={e => { e.currentTarget.style.color = T.text65; e.currentTarget.style.borderColor = "rgba(255,255,255,.1)"; }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+              </button>
+              <button
+                onClick={onPlayPause}
+                aria-label={playing ? "Pause" : "Play"}
+                style={{
+                  borderRadius: "50%", width: 50, height: 50, border: "none", flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: `linear-gradient(135deg,${T.gold},${T.goldDark})`,
+                  color: T.bg, cursor: "pointer",
+                  boxShadow: `0 2px 12px rgba(201,166,107,.3)`,
+                  transition: "transform .1s, box-shadow .1s",
+                }}
+                onMouseDown={e => { e.currentTarget.style.transform = "scale(.94)"; }}
+                onMouseUp={e => { e.currentTarget.style.transform = "scale(1)"; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; }}
+              >
+                {playing
+                  ? <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                  : <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                }
+              </button>
+              <button
+                onClick={onFavNext}
+                aria-label="Next favourite track"
+                style={{
+                  background: "none", border: "1px solid rgba(255,255,255,.1)",
+                  borderRadius: "50%", width: 38, height: 38, cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: T.text65, transition: "color .15s, border-color .15s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.color = T.text; e.currentTarget.style.borderColor = "rgba(255,255,255,.3)"; }}
+                onMouseLeave={e => { e.currentTarget.style.color = T.text65; e.currentTarget.style.borderColor = "rgba(255,255,255,.1)"; }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Row 2: progress bar + times */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: T.text45, width: 34, textAlign: "right", flexShrink: 0 }}>
+              {fmtTime(audioTime?.current)}
+            </span>
+            <input
+              type="range" min="0" max="100" step="0.1"
+              value={progress}
+              onChange={e => onSeek(Number(e.target.value))}
+              className="seek-bar"
+              aria-label="Playback position"
+              style={{
+                flex: 1, maxWidth: "none",
+                background: `linear-gradient(to right, #c9a66b ${progress}%, rgba(255,255,255,.08) ${progress}%)`
+              }}
+            />
+            <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: T.text45, width: 34, flexShrink: 0 }}>
+              {fmtTime(audioTime?.duration)}
+            </span>
+          </div>
         </div>
       </div>
     </>
@@ -2218,11 +2334,40 @@ export default function App() {
     }
     const albumIdx = visibleAlbums.findIndex(a => a.id === favTrack.albumId);
     if (albumIdx === -1) return;
+
+    // If already on this album and tracks are loaded, play directly.
+    // jumpTo is a no-op when the carousel is already settled there, so
+    // the pending-play effect would never fire — we must trigger play here.
+    if (visibleAlbums[settled]?.id === favTrack.albumId) {
+      const loaded = plexTracks[favTrack.albumId];
+      if (loaded?.length) {
+        const ti = loaded.findIndex(t => t.ratingKey === favTrack.ratingKey);
+        if (ti !== -1) {
+          setTrackIdx(ti);
+          setProgress(0);
+          setPlaying(true);
+          return;
+        }
+      }
+    }
+
     pendingPlayRef.current = { albumId: favTrack.albumId, ratingKey: favTrack.ratingKey };
     jumpTo(albumIdx);
-  }, [visibleAlbums, jumpTo]);
+  }, [visibleAlbums, jumpTo, settled, plexTracks]);
 
   useEffect(() => { playFromFavouritesRef.current = playFromFavourites; }, [playFromFavourites]);
+
+  const onFavPrev = useCallback(() => {
+    if (!favQueueRef.current) return;
+    const { tracks: favTracks, idx } = favQueueRef.current;
+    if (idx > 0) playFromFavourites(favTracks[idx - 1], favTracks);
+  }, [playFromFavourites]);
+
+  const onFavNext = useCallback(() => {
+    if (!favQueueRef.current) return;
+    const { tracks: favTracks, idx } = favQueueRef.current;
+    if (idx + 1 < favTracks.length) playFromFavourites(favTracks[idx + 1], favTracks);
+  }, [playFromFavourites]);
 
   // Keyboard shortcuts: "/" search, "r" random, "f" favourite, "e" edit mode, "," prev track, "." next track
   useEffect(() => {
@@ -2367,7 +2512,7 @@ export default function App() {
   return (
     <>
       <div style={{
-        minHeight:"100vh", background:T.bg, color:T.text,
+        height:"100vh", background:T.bg, color:T.text,
         display:"flex", flexDirection:"column",
         overflow:"hidden", fontFamily:"'DM Sans',sans-serif",
         position:"relative",
@@ -2491,39 +2636,41 @@ export default function App() {
           />
         )}
 
-        <div style={{ padding:"6px 0 14px", flexShrink:0 }}>
-          <PlayerControls
-            isPlaying={playing}
-            onPlayPause={() => setPlaying(p => !p)}
-            onPrev={() => {
-              if (trackShuffle) {
-                const prevPos = shufflePosRef.current - 1;
-                if (prevPos >= 0) { shufflePosRef.current = prevPos; setTrackIdx(shuffleOrderRef.current[prevPos]); setProgress(0); }
-              } else {
-                if (trackIdx > 0) { setTrackIdx(i => i-1); setProgress(0); }
-              }
-            }}
-            onNext={() => {
-              if (trackShuffle) {
-                const nextPos = shufflePosRef.current + 1;
-                if (nextPos < shuffleOrderRef.current.length) { shufflePosRef.current = nextPos; setTrackIdx(shuffleOrderRef.current[nextPos]); setProgress(0); }
-              } else {
-                if (trackIdx < tracks.length-1) { setTrackIdx(i => i+1); setProgress(0); }
-              }
-            }}
-            isShuffling={trackShuffle}
-            onShuffleTracks={toggleTrackShuffle}
-            currentTrack={track} album={album} progress={progress} audioTime={audioTime}
-            isFavourite={album?.userRating > 0}
-            onToggleFavourite={toggleFavourite}
-            onSeek={pct => {
-              setProgress(pct);
-              if (connected && audioRef.current?.duration) {
-                audioRef.current.currentTime = (pct / 100) * audioRef.current.duration;
-              }
-            }}
-          />
-        </div>
+        {!showFavourites && (
+          <div style={{ padding:"6px 0 14px", flexShrink:0 }}>
+            <PlayerControls
+              isPlaying={playing}
+              onPlayPause={() => setPlaying(p => !p)}
+              onPrev={() => {
+                if (trackShuffle) {
+                  const prevPos = shufflePosRef.current - 1;
+                  if (prevPos >= 0) { shufflePosRef.current = prevPos; setTrackIdx(shuffleOrderRef.current[prevPos]); setProgress(0); }
+                } else {
+                  if (trackIdx > 0) { setTrackIdx(i => i-1); setProgress(0); }
+                }
+              }}
+              onNext={() => {
+                if (trackShuffle) {
+                  const nextPos = shufflePosRef.current + 1;
+                  if (nextPos < shuffleOrderRef.current.length) { shufflePosRef.current = nextPos; setTrackIdx(shuffleOrderRef.current[nextPos]); setProgress(0); }
+                } else {
+                  if (trackIdx < tracks.length-1) { setTrackIdx(i => i+1); setProgress(0); }
+                }
+              }}
+              isShuffling={trackShuffle}
+              onShuffleTracks={toggleTrackShuffle}
+              currentTrack={track} album={album} progress={progress} audioTime={audioTime}
+              isFavourite={album?.userRating > 0}
+              onToggleFavourite={toggleFavourite}
+              onSeek={pct => {
+                setProgress(pct);
+                if (connected && audioRef.current?.duration) {
+                  audioRef.current.currentTime = (pct / 100) * audioRef.current.duration;
+                }
+              }}
+            />
+          </div>
+        )}
 
         {showFavourites && connected && sectionKey ? (
           <FavouritesPanel
@@ -2533,6 +2680,18 @@ export default function App() {
             onPlay={playFromFavourites}
             onClose={() => { setShowFavourites(false); favQueueRef.current = null; }}
             currentRatingKey={track?.ratingKey}
+            playing={playing}
+            onPlayPause={() => setPlaying(p => !p)}
+            onFavPrev={onFavPrev}
+            onFavNext={onFavNext}
+            progress={progress}
+            audioTime={audioTime}
+            onSeek={pct => {
+              setProgress(pct);
+              if (connected && audioRef.current?.duration) {
+                audioRef.current.currentTime = (pct / 100) * audioRef.current.duration;
+              }
+            }}
           />
         ) : (
           <div style={{ flex:1, overflow:"hidden", paddingBottom:20 }}>
