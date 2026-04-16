@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo, memo } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { List as VirtualList } from "react-window";
 
 /* =========================================================================
    DESIGN TOKENS
@@ -80,10 +81,20 @@ async function plexDeleteItem(serverUrl, token, ratingKey) {
 }
 
 async function plexFetchFavouriteTracks(serverUrl, token, sectionKey) {
-  const data = await plexFetch(
-    `${serverUrl}/library/sections/${sectionKey}/all?type=10&sort=addedAt%3Adesc&userRating%3E%3E0=1&X-Plex-Token=${token}`
+  // Fetch rated tracks and rated albums in parallel.
+  // Tracks that belong to a rated album were hearted at album level (e.g. in
+  // Plexamp), not individually — exclude them so we only show individually-
+  // favourited tracks.
+  const [tracksData, albumsData] = await Promise.all([
+    plexFetch(`${serverUrl}/library/sections/${sectionKey}/all?type=10&sort=addedAt%3Adesc&userRating%3E%3E0=1&X-Plex-Token=${token}`),
+    plexFetch(`${serverUrl}/library/sections/${sectionKey}/all?type=9&userRating%3E%3E0=1&X-Plex-Token=${token}`),
+  ]);
+  const ratedAlbumKeys = new Set(
+    (albumsData.MediaContainer.Metadata || []).map(a => a.ratingKey)
   );
-  return data.MediaContainer.Metadata || [];
+  return (tracksData.MediaContainer.Metadata || []).filter(
+    t => !ratedAlbumKeys.has(t.parentRatingKey)
+  );
 }
 
 /* =========================================================================
@@ -962,15 +973,114 @@ function SearchPalette({ albums, onSelect, onClose }) {
 }
 
 /* =========================================================================
+   FAVOURITES VIEW HELPERS
+   ========================================================================= */
+function formatFavDuration(ms) {
+  if (!ms) return "";
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+// Animated equalizer bars shown next to the currently-playing track
+function PlayingEqualizer() {
+  return (
+    <span aria-hidden="true" style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 14 }}>
+      {[0, 1, 2].map(i => (
+        <span key={i} style={{
+          display: "block", width: 3, borderRadius: 2,
+          background: T.gold,
+          animation: `favEq${i + 1} .9s ease-in-out infinite alternate`,
+        }} />
+      ))}
+    </span>
+  );
+}
+
+const FAV_ROW_H = 60; // px — must match rowHeight in VirtualList
+
+// Virtualised row — memo so react-window doesn't re-render unchanged rows
+const FavTrackRow = memo(function FavTrackRow({ index, style, tracks, onPlay, currentRatingKey }) {
+  const t = tracks[index];
+  const isPlaying = t.ratingKey === currentRatingKey;
+
+  return (
+    <div style={style}>
+      <button
+        onClick={() => onPlay(t)}
+        aria-label={`Play ${t.title} by ${t.artist}`}
+        style={{
+          all: "unset", display: "flex", alignItems: "center", gap: 14,
+          padding: "0 20px", cursor: "pointer",
+          width: "100%", height: "100%", boxSizing: "border-box",
+          borderLeft: `2px solid ${isPlaying ? T.gold : "transparent"}`,
+          background: isPlaying ? "rgba(201,166,107,.07)" : "transparent",
+          transition: "background .08s, border-left-color .1s",
+        }}
+        onMouseEnter={e => {
+          if (!isPlaying) {
+            e.currentTarget.style.background = "rgba(201,166,107,.07)";
+            e.currentTarget.style.borderLeftColor = T.gold;
+          }
+        }}
+        onMouseLeave={e => {
+          if (!isPlaying) {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.borderLeftColor = "transparent";
+          }
+        }}
+      >
+        {/* Playing indicator */}
+        <div style={{ width: 22, display: "flex", justifyContent: "center", flexShrink: 0 }}>
+          {isPlaying && <PlayingEqualizer />}
+        </div>
+        {/* Album art */}
+        <div style={{ width: 44, height: 44, borderRadius: 5, overflow: "hidden", flexShrink: 0, boxShadow: "0 2px 8px rgba(0,0,0,.4)" }}>
+          {t.thumbUrl
+            ? <img src={t.thumbUrl} alt="" width={44} height={44} loading="lazy"
+                style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
+            : <AlbumArt album={{ id: t.albumId, title: t.albumTitle, artist: t.artist }} size={44} />
+          }
+        </div>
+        {/* Track info */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontFamily: "'DM Sans',sans-serif", fontSize: 14,
+            color: isPlaying ? T.gold : T.text,
+            fontWeight: isPlaying ? 600 : 500,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            transition: "color .15s",
+          }}>{t.title}</div>
+          <div style={{
+            fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: T.text50, marginTop: 2,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>
+            <span style={{ color: T.text55 }}>{t.artist}</span>
+            {t.albumTitle && <span> · {t.albumTitle}</span>}
+          </div>
+        </div>
+        {/* Duration */}
+        <div style={{ fontFamily: "'DM Mono',monospace", fontSize: 12, color: T.text45, flexShrink: 0 }}>
+          {formatFavDuration(t.duration)}
+        </div>
+      </button>
+    </div>
+  );
+});
+
+/* =========================================================================
    FAVOURITES VIEW
    - Replaces the CoverFlow + TrackList area (not an overlay)
-   - Fetches all rated tracks from Plex on open, sorted by addedAt desc
+   - Fetches only individually-rated tracks (album-rated tracks excluded)
    - Click a track to play it; PlayerControls remains visible below
    ========================================================================= */
-function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose }) {
+function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, currentRatingKey }) {
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [sortMode, setSortMode] = useState("recent"); // "recent" | "alpha" | "artist"
+  const [shuffling, setShuffling] = useState(false);
+  const listContainerRef = useRef(null);
+  const [listHeight, setListHeight] = useState(500);
 
   useEffect(() => {
     setLoading(true);
@@ -992,53 +1102,147 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose }) {
       .catch(() => { setError("Could not load favourites."); setLoading(false); });
   }, [serverUrl, token, sectionKey]);
 
-  function formatDuration(ms) {
-    if (!ms) return "";
-    const s = Math.round(ms / 1000);
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  // Measure the list container so react-window knows its height
+  useEffect(() => {
+    if (!listContainerRef.current) return;
+    const ro = new ResizeObserver(([entry]) => setListHeight(entry.contentRect.height));
+    ro.observe(listContainerRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  const sortedTracks = useMemo(() => {
+    if (sortMode === "alpha")   return [...tracks].sort((a, b) => a.title.localeCompare(b.title));
+    if (sortMode === "artist")  return [...tracks].sort((a, b) => a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title));
+    return tracks; // "recent" — API order (addedAt desc)
+  }, [tracks, sortMode]);
+
+  // Stable rowProps so react-window rows don't re-render on unrelated state changes
+  const rowProps = useMemo(() => ({ tracks: sortedTracks, onPlay, currentRatingKey }), [sortedTracks, onPlay, currentRatingKey]);
+
+  function shufflePlay() {
+    if (!sortedTracks.length) return;
+    setShuffling(true);
+    setTimeout(() => setShuffling(false), 600);
+    const pick = sortedTracks[Math.floor(Math.random() * sortedTracks.length)];
+    onPlay(pick);
   }
 
-  return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zIndex: 1 }}>
-      {/* Header */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 10,
-        padding: "8px 20px 6px",
-        borderBottom: "1px solid rgba(255,255,255,.05)",
-        flexShrink: 0,
-      }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill={T.gold}>
-          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-        </svg>
-        <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 12, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: T.text55 }}>
-          {loading ? "Favourites" : `Favourites · ${tracks.length} track${tracks.length !== 1 ? "s" : ""}`}
-        </span>
-        <div style={{ flex: 1 }} />
-        <button
-          onClick={onClose}
-          style={{
-            background: "none", border: "none", cursor: "pointer",
-            color: T.text45, padding: "4px 6px", lineHeight: 1,
-            fontFamily: "'DM Sans',sans-serif", fontSize: 12,
-            display: "flex", alignItems: "center", gap: 5,
-            transition: "color .15s",
-          }}
-          onMouseEnter={e => e.currentTarget.style.color = T.text}
-          onMouseLeave={e => e.currentTarget.style.color = T.text45}
-          aria-label="Back to library"
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
-          </svg>
-          Back
-        </button>
-      </div>
+  const SORT_OPTS = [
+    { key: "recent", label: "Recent" },
+    { key: "alpha",  label: "A–Z" },
+    { key: "artist", label: "Artist" },
+  ];
 
-      {/* Track list */}
-      <div style={{ flex: 1, overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,.1) transparent" }}>
+  return (
+    <>
+      {/* Keyframes for the equalizer bars and panel entrance */}
+      <style>{`
+        @keyframes favEq1 { from { height: 4px; } to { height: 14px; } }
+        @keyframes favEq2 { from { height: 8px; } to { height: 4px; } }
+        @keyframes favEq3 { from { height: 12px; } to { height: 6px; } }
+        @keyframes favPanelIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes favShuffleSpin { 0% { transform: scale(1) rotate(0deg); } 40% { transform: scale(1.25) rotate(-20deg); } 100% { transform: scale(1) rotate(0deg); } }
+      `}</style>
+
+      <div style={{
+        flex: 1, display: "flex", flexDirection: "column", overflow: "hidden",
+        position: "relative", zIndex: 1,
+        animation: "favPanelIn .2s ease-out both",
+      }}>
+        {/* Header */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10,
+          padding: "8px 20px 8px",
+          borderBottom: "1px solid rgba(255,255,255,.05)",
+          flexShrink: 0,
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill={T.gold} style={{ flexShrink: 0 }}>
+            <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+          </svg>
+          <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 12, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: T.text55, flexShrink: 0 }}>
+            {loading ? "Favourites" : `Favourites · ${tracks.length} track${tracks.length !== 1 ? "s" : ""}`}
+          </span>
+
+          <div style={{ flex: 1 }} />
+
+          {/* Sort pills */}
+          {!loading && !error && tracks.length > 0 && (
+            <div style={{ display: "flex", gap: 4 }}>
+              {SORT_OPTS.map(opt => (
+                <button
+                  key={opt.key}
+                  onClick={() => setSortMode(opt.key)}
+                  style={{
+                    background: sortMode === opt.key ? "rgba(201,166,107,.18)" : "transparent",
+                    border: sortMode === opt.key ? `1px solid rgba(201,166,107,.35)` : "1px solid rgba(255,255,255,.08)",
+                    borderRadius: 5, padding: "3px 9px", cursor: "pointer",
+                    fontFamily: "'DM Sans',sans-serif", fontSize: 11, fontWeight: 500,
+                    color: sortMode === opt.key ? T.gold : T.text45,
+                    transition: "all .15s",
+                  }}
+                  onMouseEnter={e => { if (sortMode !== opt.key) e.currentTarget.style.color = T.text; }}
+                  onMouseLeave={e => { if (sortMode !== opt.key) e.currentTarget.style.color = T.text45; }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Shuffle play button */}
+          {!loading && !error && tracks.length > 0 && (
+            <button
+              onClick={shufflePlay}
+              title="Play a random track from favourites"
+              aria-label="Shuffle play favourites"
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                color: T.text45, padding: "4px 8px", lineHeight: 1,
+                display: "flex", alignItems: "center", gap: 5,
+                fontFamily: "'DM Sans',sans-serif", fontSize: 12,
+                transition: "color .15s",
+              }}
+              onMouseEnter={e => e.currentTarget.style.color = T.gold}
+              onMouseLeave={e => e.currentTarget.style.color = T.text45}
+            >
+              <svg
+                width="14" height="14" viewBox="0 0 24 24" fill="currentColor"
+                style={{ animation: shuffling ? "favShuffleSpin .6s ease-out" : "none" }}
+              >
+                <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
+              </svg>
+              Shuffle
+            </button>
+          )}
+
+          {/* Back */}
+          <button
+            onClick={onClose}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              color: T.text45, padding: "4px 6px", lineHeight: 1,
+              fontFamily: "'DM Sans',sans-serif", fontSize: 12,
+              display: "flex", alignItems: "center", gap: 5,
+              transition: "color .15s",
+            }}
+            onMouseEnter={e => e.currentTarget.style.color = T.text}
+            onMouseLeave={e => e.currentTarget.style.color = T.text45}
+            aria-label="Back to library"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+            </svg>
+            Back
+          </button>
+        </div>
+
+        {/* States */}
         {loading && (
           <div style={{ padding: "40px 20px", textAlign: "center", color: T.text45, fontFamily: "'DM Sans',sans-serif", fontSize: 14 }}>
-            Loading…
+            <svg width="16" height="16" viewBox="0 0 24 24" fill={T.gold} style={{ marginBottom: 10, opacity: .6, display: "block", margin: "0 auto 10px" }}>
+              <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+            </svg>
+            Finding your starred tracks…
           </div>
         )}
         {error && (
@@ -1048,56 +1252,27 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose }) {
         )}
         {!loading && !error && tracks.length === 0 && (
           <div style={{ padding: "40px 20px", textAlign: "center", color: T.text45, fontFamily: "'DM Sans',sans-serif", fontSize: 14 }}>
-            No favourited tracks yet.
-            <div style={{ fontSize: 12, marginTop: 6, opacity: .6 }}>Heart tracks using the ♡ icon in the tracklist.</div>
+            No individually starred tracks yet.
+            <div style={{ fontSize: 12, marginTop: 6, opacity: .6 }}>Star individual tracks using the ★ icon in the tracklist.</div>
           </div>
         )}
-        {!loading && !error && tracks.map((t, i) => (
-          <button
-            key={t.ratingKey}
-            onClick={() => onPlay(t)}
-            style={{
-              all: "unset", display: "flex", alignItems: "center", gap: 14,
-              padding: "8px 20px", cursor: "pointer", width: "100%", boxSizing: "border-box",
-              borderLeft: "2px solid transparent",
-              transition: "background .08s",
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,166,107,.07)"; e.currentTarget.style.borderLeftColor = T.gold; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderLeftColor = "transparent"; }}
-          >
-            {/* Row number */}
-            <div style={{ width: 22, textAlign: "right", fontFamily: "'DM Mono',monospace", fontSize: 11, color: T.text45, flexShrink: 0 }}>
-              {i + 1}
-            </div>
-            {/* Album art */}
-            <div style={{ width: 44, height: 44, borderRadius: 5, overflow: "hidden", flexShrink: 0, boxShadow: "0 2px 8px rgba(0,0,0,.4)" }}>
-              {t.thumbUrl
-                ? <img src={t.thumbUrl} alt="" width={44} height={44} style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
-                : <AlbumArt album={{ id: t.albumId, title: t.albumTitle, artist: t.artist }} size={44} />
-              }
-            </div>
-            {/* Track info */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{
-                fontFamily: "'DM Sans',sans-serif", fontSize: 14, color: T.text, fontWeight: 500,
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              }}>{t.title}</div>
-              <div style={{
-                fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: T.text50, marginTop: 2,
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              }}>
-                <span style={{ color: T.text55 }}>{t.artist}</span>
-                {t.albumTitle && <span> · {t.albumTitle}</span>}
-              </div>
-            </div>
-            {/* Duration */}
-            <div style={{ fontFamily: "'DM Mono',monospace", fontSize: 12, color: T.text45, flexShrink: 0 }}>
-              {formatDuration(t.duration)}
-            </div>
-          </button>
-        ))}
+
+        {/* Virtualised track list */}
+        <div ref={listContainerRef} style={{ flex: 1, overflow: "hidden" }}>
+          {!loading && !error && sortedTracks.length > 0 && (
+            <VirtualList
+              height={listHeight}
+              rowCount={sortedTracks.length}
+              rowHeight={FAV_ROW_H}
+              width="100%"
+              rowComponent={FavTrackRow}
+              rowProps={rowProps}
+              style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,.1) transparent" }}
+            />
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -2330,6 +2505,7 @@ export default function App() {
             sectionKey={sectionKey}
             onPlay={playFromFavourites}
             onClose={() => setShowFavourites(false)}
+            currentRatingKey={track?.ratingKey}
           />
         ) : (
           <div style={{ flex:1, overflow:"hidden", paddingBottom:20 }}>
@@ -2351,7 +2527,7 @@ export default function App() {
           </div>
         )}
 
-        {connected && letters.length > 1 && (
+        {connected && letters.length > 1 && !showFavourites && (
           <AlphabetScrubber letters={letters} letterMap={letterMap} jumpTo={jumpTo} onSearchOpen={() => setShowSearch(true)} onFavouritesOpen={() => setShowFavourites(f => !f)} favouritesActive={showFavourites} />
         )}
 
