@@ -1267,6 +1267,116 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
           </div>
         )}
 
+        {/* ── Now Playing ──────────────────────────────────────────── */}
+        <div style={{
+          flexShrink: 0,
+          borderBottom: "1px solid rgba(255,255,255,.07)",
+          padding: "16px 20px 18px",
+          display: "flex", gap: 18, alignItems: "center",
+          background: "rgba(255,255,255,.02)",
+        }}>
+          {/* Album art */}
+          <div style={{ width: 80, height: 80, borderRadius: 8, overflow: "hidden", flexShrink: 0, boxShadow: "0 4px 20px rgba(0,0,0,.6)" }}>
+            {playingFavTrack?.thumbUrl
+              ? <img src={playingFavTrack.thumbUrl} alt="" width={80} height={80} loading="lazy"
+                  style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
+              : <AlbumArt album={{ id: playingFavTrack?.albumId ?? 0, title: playingFavTrack?.albumTitle ?? "", artist: playingFavTrack?.artist ?? "" }} size={80} />
+            }
+          </div>
+
+          {/* Info + progress + transport */}
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+            {/* Track title */}
+            <div style={{
+              fontFamily: "'Playfair Display',serif", fontSize: 20, fontWeight: 600, lineHeight: 1.2,
+              color: playingFavTrack ? T.text : T.text45,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>
+              {playingFavTrack?.title || "Nothing playing"}
+            </div>
+            {/* Artist · Album */}
+            <div style={{
+              fontFamily: "'DM Sans',sans-serif", fontSize: 13, color: T.text55,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>
+              {playingFavTrack
+                ? [playingFavTrack.artist, playingFavTrack.albumTitle].filter(Boolean).join(" · ")
+                : "Select a track from the list below"}
+            </div>
+            {/* Progress bar + times */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: T.text45, width: 32, textAlign: "right", flexShrink: 0 }}>
+                {fmtTime(audioTime?.current)}
+              </span>
+              <input
+                type="range" min="0" max="100" step="0.1"
+                value={progress}
+                onChange={e => onSeek(Number(e.target.value))}
+                className="seek-bar"
+                aria-label="Playback position"
+                style={{
+                  flex: 1, maxWidth: "none",
+                  background: `linear-gradient(to right, #c9a66b ${progress}%, rgba(255,255,255,.08) ${progress}%)`
+                }}
+              />
+              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: T.text45, width: 32, flexShrink: 0 }}>
+                {fmtTime(audioTime?.duration)}
+              </span>
+            </div>
+            {/* Transport */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <button
+                onClick={onFavPrev}
+                aria-label="Previous favourite track"
+                style={{
+                  background: "none", border: "1px solid rgba(255,255,255,.1)",
+                  borderRadius: "50%", width: 36, height: 36, cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: T.text65, transition: "color .15s, border-color .15s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.color = T.text; e.currentTarget.style.borderColor = "rgba(255,255,255,.3)"; }}
+                onMouseLeave={e => { e.currentTarget.style.color = T.text65; e.currentTarget.style.borderColor = "rgba(255,255,255,.1)"; }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+              </button>
+              <button
+                onClick={onPlayPause}
+                aria-label={playing ? "Pause" : "Play"}
+                style={{
+                  borderRadius: "50%", width: 48, height: 48, border: "none", flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: `linear-gradient(135deg,${T.gold},${T.goldDark})`,
+                  color: T.bg, cursor: "pointer",
+                  boxShadow: "0 2px 14px rgba(201,166,107,.35)",
+                  transition: "transform .1s",
+                }}
+                onMouseDown={e => { e.currentTarget.style.transform = "scale(.93)"; }}
+                onMouseUp={e => { e.currentTarget.style.transform = "scale(1)"; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; }}
+              >
+                {playing
+                  ? <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                  : <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                }
+              </button>
+              <button
+                onClick={onFavNext}
+                aria-label="Next favourite track"
+                style={{
+                  background: "none", border: "1px solid rgba(255,255,255,.1)",
+                  borderRadius: "50%", width: 36, height: 36, cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: T.text65, transition: "color .15s, border-color .15s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.color = T.text; e.currentTarget.style.borderColor = "rgba(255,255,255,.3)"; }}
+                onMouseLeave={e => { e.currentTarget.style.color = T.text65; e.currentTarget.style.borderColor = "rgba(255,255,255,.1)"; }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Virtualised track list */}
         <div ref={listContainerRef} style={{ flex: 1, overflow: "hidden" }}>
           {!loading && !error && sortedTracks.length > 0 && (
@@ -1280,116 +1390,6 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
               style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,.1) transparent" }}
             />
           )}
-        </div>
-
-        {/* ── Integrated playback controls ─────────────────────────── */}
-        <div style={{
-          flexShrink: 0,
-          borderTop: "1px solid rgba(255,255,255,.08)",
-          padding: "12px 20px 18px",
-          display: "flex", flexDirection: "column", gap: 10,
-        }}>
-          {/* Row 1: art + info + transport */}
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            {/* Album art */}
-            <div style={{ width: 48, height: 48, borderRadius: 6, overflow: "hidden", flexShrink: 0, boxShadow: "0 2px 12px rgba(0,0,0,.5)" }}>
-              {playingFavTrack?.thumbUrl
-                ? <img src={playingFavTrack.thumbUrl} alt="" width={48} height={48} loading="lazy"
-                    style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
-                : <AlbumArt album={{ id: playingFavTrack?.albumId ?? 0, title: playingFavTrack?.albumTitle ?? "", artist: playingFavTrack?.artist ?? "" }} size={48} />
-              }
-            </div>
-            {/* Track info */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{
-                fontFamily: "'Playfair Display',serif", fontSize: 15, fontWeight: 600,
-                color: playingFavTrack ? T.text : T.text45,
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              }}>
-                {playingFavTrack?.title || "Nothing playing"}
-              </div>
-              <div style={{
-                fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: T.text50, marginTop: 3,
-                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              }}>
-                {playingFavTrack
-                  ? [playingFavTrack.artist, playingFavTrack.albumTitle].filter(Boolean).join(" · ")
-                  : "Select a track above to play"}
-              </div>
-            </div>
-            {/* Transport buttons */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-              <button
-                onClick={onFavPrev}
-                aria-label="Previous favourite track"
-                style={{
-                  background: "none", border: "1px solid rgba(255,255,255,.1)",
-                  borderRadius: "50%", width: 38, height: 38, cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  color: T.text65, transition: "color .15s, border-color .15s",
-                }}
-                onMouseEnter={e => { e.currentTarget.style.color = T.text; e.currentTarget.style.borderColor = "rgba(255,255,255,.3)"; }}
-                onMouseLeave={e => { e.currentTarget.style.color = T.text65; e.currentTarget.style.borderColor = "rgba(255,255,255,.1)"; }}
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
-              </button>
-              <button
-                onClick={onPlayPause}
-                aria-label={playing ? "Pause" : "Play"}
-                style={{
-                  borderRadius: "50%", width: 50, height: 50, border: "none", flexShrink: 0,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  background: `linear-gradient(135deg,${T.gold},${T.goldDark})`,
-                  color: T.bg, cursor: "pointer",
-                  boxShadow: `0 2px 12px rgba(201,166,107,.3)`,
-                  transition: "transform .1s, box-shadow .1s",
-                }}
-                onMouseDown={e => { e.currentTarget.style.transform = "scale(.94)"; }}
-                onMouseUp={e => { e.currentTarget.style.transform = "scale(1)"; }}
-                onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; }}
-              >
-                {playing
-                  ? <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-                  : <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                }
-              </button>
-              <button
-                onClick={onFavNext}
-                aria-label="Next favourite track"
-                style={{
-                  background: "none", border: "1px solid rgba(255,255,255,.1)",
-                  borderRadius: "50%", width: 38, height: 38, cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  color: T.text65, transition: "color .15s, border-color .15s",
-                }}
-                onMouseEnter={e => { e.currentTarget.style.color = T.text; e.currentTarget.style.borderColor = "rgba(255,255,255,.3)"; }}
-                onMouseLeave={e => { e.currentTarget.style.color = T.text65; e.currentTarget.style.borderColor = "rgba(255,255,255,.1)"; }}
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
-              </button>
-            </div>
-          </div>
-
-          {/* Row 2: progress bar + times */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: T.text45, width: 34, textAlign: "right", flexShrink: 0 }}>
-              {fmtTime(audioTime?.current)}
-            </span>
-            <input
-              type="range" min="0" max="100" step="0.1"
-              value={progress}
-              onChange={e => onSeek(Number(e.target.value))}
-              className="seek-bar"
-              aria-label="Playback position"
-              style={{
-                flex: 1, maxWidth: "none",
-                background: `linear-gradient(to right, #c9a66b ${progress}%, rgba(255,255,255,.08) ${progress}%)`
-              }}
-            />
-            <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: T.text45, width: 34, flexShrink: 0 }}>
-              {fmtTime(audioTime?.duration)}
-            </span>
-          </div>
         </div>
       </div>
     </>
