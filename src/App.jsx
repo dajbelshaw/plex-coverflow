@@ -1998,6 +1998,9 @@ export default function App() {
   const favQueueRef = useRef(null);
   const showFavouritesRef = useRef(false);
   const playFromFavouritesRef = useRef(null);
+  // Always-current settled index — avoids stale closure in playFromFavourites when called from onended
+  const settledRef = useRef(settled);
+  settledRef.current = settled;
 
   // Fade volume to 0 over ~150ms then pause; restores volume for next play
   const fadeAndPause = useCallback((audio) => {
@@ -2330,10 +2333,15 @@ export default function App() {
     const albumIdx = visibleAlbums.findIndex(a => a.id === favTrack.albumId);
     if (albumIdx === -1) return;
 
+    // Use settledRef.current (always current) instead of the closure-captured settled to avoid
+    // a stale-closure race between the RAF tick (which updates settled state) and audio.onended
+    // (a native browser event that fires before the React effect can update this callback's ref).
+    const currentSettled = settledRef.current;
+
     // If already on this album and tracks are loaded, play directly.
     // jumpTo is a no-op when the carousel is already settled there, so
     // the pending-play effect would never fire — we must trigger play here.
-    if (visibleAlbums[settled]?.id === favTrack.albumId) {
+    if (visibleAlbums[currentSettled]?.id === favTrack.albumId) {
       const loaded = plexTracks[favTrack.albumId];
       if (loaded?.length) {
         const ti = loaded.findIndex(t => t.ratingKey === favTrack.ratingKey);
@@ -2348,7 +2356,23 @@ export default function App() {
 
     pendingPlayRef.current = { albumId: favTrack.albumId, ratingKey: favTrack.ratingKey };
     jumpTo(albumIdx);
-  }, [visibleAlbums, jumpTo, settled, plexTracks]);
+
+    // If jumpTo targets the already-settled album (stale-settled caused the fast path above to
+    // be skipped), the pending-play effect will never fire because settled won't change and
+    // plexTracks[albumId] is already loaded. Consume immediately in that case.
+    if (albumIdx === currentSettled) {
+      const loadedTracks = plexTracks[favTrack.albumId];
+      if (loadedTracks?.length) {
+        const ti = loadedTracks.findIndex(t => t.ratingKey === favTrack.ratingKey);
+        pendingPlayRef.current = null;
+        if (ti !== -1) {
+          setTrackIdx(ti);
+          setProgress(0);
+          setPlaying(true);
+        }
+      }
+    }
+  }, [visibleAlbums, jumpTo, plexTracks]);
 
   useEffect(() => { playFromFavouritesRef.current = playFromFavourites; }, [playFromFavourites]);
 
