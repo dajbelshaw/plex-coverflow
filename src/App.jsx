@@ -1088,7 +1088,7 @@ const FavTrackRow = memo(function FavTrackRow({ index, style, tracks, onPlay, cu
    - Fetches only individually-rated tracks (album-rated tracks excluded)
    - Click a track to play it; PlayerControls remains visible below
    ========================================================================= */
-function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, currentRatingKey, playing, onPlayPause, onFavPrev, onFavNext, progress, audioTime, onSeek }) {
+function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, currentRatingKey, currentTrack, playing, onPlayPause, onFavPrev, onFavNext, progress, audioTime, onSeek }) {
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -1134,10 +1134,13 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
   // Stable rowProps so react-window rows don't re-render on unrelated state changes
   const rowProps = useMemo(() => ({ tracks: sortedTracks, onPlay, currentRatingKey }), [sortedTracks, onPlay, currentRatingKey]);
 
-  // Track currently playing (for integrated controls bar)
+  // Track currently playing (for integrated controls bar); fall back to the
+  // main player's track when a non-favourited track is playing
   const playingFavTrack = useMemo(() =>
-    currentRatingKey ? tracks.find(t => t.ratingKey === currentRatingKey) : null,
-    [tracks, currentRatingKey]
+    currentRatingKey
+      ? (tracks.find(t => t.ratingKey === currentRatingKey) || currentTrack || null)
+      : null,
+    [tracks, currentRatingKey, currentTrack]
   );
 
   function shufflePlay() {
@@ -2719,6 +2722,14 @@ export default function App() {
             onPlay={playFromFavourites}
             onClose={() => { setShowFavourites(false); favQueueRef.current = null; }}
             currentRatingKey={track?.ratingKey}
+            currentTrack={track ? {
+              ratingKey: track.ratingKey,
+              title: track.title,
+              albumTitle: album?.title || "",
+              artist: album?.artist || "",
+              thumbUrl: album?.thumbUrl || null,
+              albumId: album?.id,
+            } : null}
             playing={playing}
             onPlayPause={() => setPlaying(p => !p)}
             onFavPrev={onFavPrev}
