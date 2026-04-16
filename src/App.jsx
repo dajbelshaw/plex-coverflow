@@ -81,9 +81,20 @@ async function plexDeleteItem(serverUrl, token, ratingKey) {
 }
 
 async function plexFetchFavouriteTracks(serverUrl, token, sectionKey) {
-  // Plex propagates track ratings up to the parent album, so there's no
-  // reliable API-level way to distinguish "album hearted" from "track hearted".
-  // Just return all individually-rated tracks sorted by most recently added.
+  // Plex maintains a smart playlist called "❤️ Tracks" that contains only
+  // individually-hearted tracks (not album-level hearts). Use that when it
+  // exists; fall back to the ratings query otherwise.
+  try {
+    const playlists = await plexFetch(`${serverUrl}/playlists?X-Plex-Token=${token}`);
+    const likedPlaylist = (playlists.MediaContainer.Metadata || []).find(
+      p => p.playlistType === "audio" && p.smart === true && /❤/.test(p.title) && /track/i.test(p.title)
+    );
+    if (likedPlaylist) {
+      const items = await plexFetch(`${serverUrl}/playlists/${likedPlaylist.ratingKey}/items?X-Plex-Token=${token}`);
+      return items.MediaContainer.Metadata || [];
+    }
+  } catch {}
+  // Fallback: all rated tracks (includes album-inherited ratings)
   const data = await plexFetch(
     `${serverUrl}/library/sections/${sectionKey}/all?type=10&sort=addedAt%3Adesc&userRating%3E%3E0=1&X-Plex-Token=${token}`
   );
