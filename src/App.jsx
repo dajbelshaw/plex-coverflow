@@ -11,11 +11,24 @@ const T = {
   gold:     "#c9a66b",
   goldDark: "#a07d4a",
   goldLight:"#e0c992",
+  // gold with opacity — use these instead of hardcoded rgba(201,166,107,…)
+  goldA7:  "rgba(201,166,107,.07)",
+  goldA8:  "rgba(201,166,107,.08)",
+  goldA10: "rgba(201,166,107,.10)",
+  goldA15: "rgba(201,166,107,.15)",
+  goldA18: "rgba(201,166,107,.18)",
+  goldA20: "rgba(201,166,107,.20)",
+  goldA25: "rgba(201,166,107,.25)",
+  goldA30: "rgba(201,166,107,.30)",
+  goldA35: "rgba(201,166,107,.35)",
+  goldA40: "rgba(201,166,107,.40)",
   text:     "#e8e4df",
-  text65:   "rgba(232,228,223,.82)",
-  text55:   "rgba(232,228,223,.72)",
-  text50:   "rgba(232,228,223,.65)",
-  text45:   "rgba(232,228,223,.58)",
+  // Text opacity variants — names reflect hierarchy (Sub→Dim = most→least prominent)
+  // Actual opacities: textSub=.82, textMeta=.72, textFaint=.65, textDim=.58
+  textSub:   "rgba(232,228,223,.82)",
+  textMeta:  "rgba(232,228,223,.72)",
+  textFaint: "rgba(232,228,223,.65)",
+  textDim:   "rgba(232,228,223,.58)",
   red:      "#e07070",
 };
 
@@ -639,13 +652,13 @@ function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onShuffleTrack
           {trackName || "Select an album"}
         </div>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, marginTop:3 }}>
-          <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:13, color:T.text55, letterSpacing:".04em", textTransform:"uppercase" }}>
+          <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:13, color:T.textMeta, letterSpacing:".04em", textTransform:"uppercase" }}>
             {album ? `${album.artist}  ·  ${album.title}` : ""}
           </div>
           {album && (
             <button onClick={onToggleFavourite} aria-label={isFavourite ? "Unfavourite" : "Favourite"} aria-pressed={isFavourite}
               style={{ background:"none", border:"none", padding:"11px 8px", margin:"-11px -8px", cursor:"pointer",
-                color: isFavourite ? T.gold : T.text45, display:"flex", alignItems:"center", lineHeight:1,
+                color: isFavourite ? T.gold : T.textDim, display:"flex", alignItems:"center", lineHeight:1,
                 transition:"color .2s",
               }}>
               {isFavourite
@@ -685,7 +698,7 @@ function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onShuffleTrack
         </div>
         <button onClick={onShuffleTracks} style={{
           ...bS, width:44, height:44,
-          color: isShuffling ? T.gold : T.text45,
+          color: isShuffling ? T.gold : T.textDim,
           borderColor: isShuffling ? T.gold : "rgba(255,255,255,.1)",
         }} aria-label={isShuffling ? "Shuffle on" : "Shuffle off"} aria-pressed={isShuffling}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
@@ -699,7 +712,7 @@ const bS = {
   background:"none", border:"1px solid rgba(255,255,255,.1)",
   borderRadius:"50%", width:44, height:44,
   display:"flex", alignItems:"center", justifyContent:"center",
-  color:T.text65, cursor:"pointer", transition:"color .2s, border-color .2s, background .2s, opacity .2s",
+  color:T.textSub, cursor:"pointer", transition:"color .2s, border-color .2s, background .2s, opacity .2s",
 };
 const pS = {
   width:56, height:56,
@@ -717,7 +730,7 @@ function TrackList({ tracks, currentTrackIndex, onSelectTrack, onToggleTrackFavo
       <div style={{
         fontFamily:"'DM Sans',sans-serif", fontSize:11,
         textTransform:"uppercase", letterSpacing:".12em",
-        color:T.text55, marginBottom:10, paddingLeft:4,
+        color:T.textMeta, marginBottom:10, paddingLeft:4,
         flexShrink:0,
       }}>Tracklist</div>
       <div style={{
@@ -741,14 +754,14 @@ function TrackList({ tracks, currentTrackIndex, onSelectTrack, onToggleTrackFavo
               aria-current={a ? "true" : undefined}
               onClick={() => onSelectTrack(i)}
             >
-              <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, width:22, textAlign:"right", flexShrink:0, color:a ? T.gold : T.text45 }}>
+              <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, width:22, textAlign:"right", flexShrink:0, color:a ? T.gold : T.textDim }}>
                 {a ? "▸" : String(i+1).padStart(2,"0")}
               </span>
-              <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:14, color:a ? T.goldLight : T.text65, fontWeight:a?500:400, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+              <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:14, color:a ? T.goldLight : T.textSub, fontWeight:a?500:400, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                 {name}
               </span>
               {dur && (
-                <span style={{ marginLeft:"auto", fontFamily:"'DM Sans',sans-serif", fontSize:12, color:T.text45, flexShrink:0, paddingRight: onToggleTrackFavourite ? 4 : 0 }}>
+                <span style={{ marginLeft:"auto", fontFamily:"'DM Sans',sans-serif", fontSize:12, color:T.textDim, flexShrink:0, paddingRight: onToggleTrackFavourite ? 4 : 0 }}>
                   {dur}
                 </span>
               )}
@@ -760,7 +773,7 @@ function TrackList({ tracks, currentTrackIndex, onSelectTrack, onToggleTrackFavo
                   aria-pressed={fav}
                   onClick={e => { e.stopPropagation(); onToggleTrackFavourite(t.ratingKey); }}
                   style={{ all:"unset", cursor:"pointer", flexShrink:0, display:"flex", alignItems:"center",
-                    color: fav ? T.gold : T.text45, lineHeight:1, padding:"4px 2px", margin:"-4px -2px" }}
+                    color: fav ? T.gold : T.textDim, lineHeight:1, padding:"4px 2px", margin:"-4px -2px" }}
                 >
                   {fav
                     ? <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
@@ -851,7 +864,7 @@ function SearchPalette({ albums, onSelect, onClose }) {
   const rowS = (active) => ({
     display: "flex", alignItems: "center", gap: 12,
     padding: "9px 14px", cursor: "pointer",
-    background: active ? "rgba(201,166,107,.1)" : "transparent",
+    background: active ? T.goldA10 : "transparent",
     borderLeft: `2px solid ${active ? T.gold : "transparent"}`,
     transition: "background .08s",
   });
@@ -884,7 +897,7 @@ function SearchPalette({ albums, onSelect, onClose }) {
       >
         {/* Input row */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ color: T.text45, flexShrink: 0 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ color: T.textDim, flexShrink: 0 }}>
             <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
           </svg>
           <input
@@ -902,7 +915,7 @@ function SearchPalette({ albums, onSelect, onClose }) {
           {q && (
             <button
               onClick={() => setQ("")}
-              style={{ background: "none", border: "none", cursor: "pointer", color: T.text45, padding: 2, lineHeight: 1 }}
+              style={{ background: "none", border: "none", cursor: "pointer", color: T.textDim, padding: 2, lineHeight: 1 }}
               aria-label="Clear search"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
@@ -910,7 +923,7 @@ function SearchPalette({ albums, onSelect, onClose }) {
           )}
           <kbd style={{
             flexShrink: 0, fontFamily: "'DM Mono', monospace", fontSize: 11,
-            color: T.text45, background: "rgba(255,255,255,.05)",
+            color: T.textDim, background: "rgba(255,255,255,.05)",
             border: "1px solid rgba(255,255,255,.1)", borderRadius: 4,
             padding: "2px 6px",
           }}>Esc</kbd>
@@ -943,7 +956,7 @@ function SearchPalette({ albums, onSelect, onClose }) {
                     {a.title}
                   </div>
                   <div style={{
-                    fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: T.text55, marginTop: 1,
+                    fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: T.textMeta, marginTop: 1,
                     overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                   }}>
                     {a.artist}{a.year ? ` · ${a.year}` : ""}
@@ -952,7 +965,7 @@ function SearchPalette({ albums, onSelect, onClose }) {
                 {i === hi && (
                   <kbd style={{
                     fontFamily: "'DM Mono', monospace", fontSize: 10, color: T.gold,
-                    background: "rgba(201,166,107,.08)", border: "1px solid rgba(201,166,107,.2)",
+                    background: T.goldA8, border: `1px solid ${T.goldA20}`,
                     borderRadius: 3, padding: "1px 5px", flexShrink: 0,
                   }}>↵</kbd>
                 )}
@@ -965,7 +978,7 @@ function SearchPalette({ albums, onSelect, onClose }) {
         {q.trim() && results.length === 0 && (
           <div style={{
             padding: "24px 16px", textAlign: "center",
-            fontFamily: "'DM Sans',sans-serif", fontSize: 14, color: T.text45,
+            fontFamily: "'DM Sans',sans-serif", fontSize: 14, color: T.textDim,
           }}>
             No albums matching "{q}"
           </div>
@@ -975,11 +988,11 @@ function SearchPalette({ albums, onSelect, onClose }) {
         {!q && (
           <div style={{
             padding: "12px 16px",
-            fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: T.text45,
+            fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: T.textDim,
             display: "flex", gap: 16,
           }}>
-            <span><kbd style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: T.text45, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 3, padding: "1px 5px" }}>↑↓</kbd> navigate</span>
-            <span><kbd style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: T.text45, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 3, padding: "1px 5px" }}>↵</kbd> jump to album</span>
+            <span><kbd style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: T.textDim, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 3, padding: "1px 5px" }}>↑↓</kbd> navigate</span>
+            <span><kbd style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: T.textDim, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 3, padding: "1px 5px" }}>↵</kbd> jump to album</span>
           </div>
         )}
       </div>
@@ -1028,12 +1041,12 @@ const FavTrackRow = memo(function FavTrackRow({ index, style, tracks, onPlay, cu
           padding: "0 20px", cursor: "pointer",
           width: "100%", height: "100%", boxSizing: "border-box",
           borderLeft: `2px solid ${isPlaying ? T.gold : "transparent"}`,
-          background: isPlaying ? "rgba(201,166,107,.07)" : "transparent",
+          background: isPlaying ? T.goldA7 : "transparent",
           transition: "background .08s, border-left-color .1s",
         }}
         onMouseEnter={e => {
           if (!isPlaying) {
-            e.currentTarget.style.background = "rgba(201,166,107,.07)";
+            e.currentTarget.style.background = T.goldA7;
             e.currentTarget.style.borderLeftColor = T.gold;
           }
         }}
@@ -1066,15 +1079,15 @@ const FavTrackRow = memo(function FavTrackRow({ index, style, tracks, onPlay, cu
             transition: "color .15s",
           }}>{t.title}</div>
           <div style={{
-            fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: T.text50, marginTop: 2,
+            fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: T.textFaint, marginTop: 2,
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>
-            <span style={{ color: T.text55 }}>{t.artist}</span>
+            <span style={{ color: T.textMeta }}>{t.artist}</span>
             {t.albumTitle && <span> · {t.albumTitle}</span>}
           </div>
         </div>
         {/* Duration */}
-        <div style={{ fontFamily: "'DM Mono',monospace", fontSize: 12, color: T.text45, flexShrink: 0 }}>
+        <div style={{ fontFamily: "'DM Mono',monospace", fontSize: 12, color: T.textDim, flexShrink: 0 }}>
           {formatFavDuration(t.duration)}
         </div>
       </button>
@@ -1183,7 +1196,7 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
           <svg width="14" height="14" viewBox="0 0 24 24" fill={T.gold} style={{ flexShrink: 0 }}>
             <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
           </svg>
-          <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 12, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: T.text55, flexShrink: 0 }}>
+          <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 12, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: T.textMeta, flexShrink: 0 }}>
             {loading ? "Favourites" : `Favourites · ${tracks.length} track${tracks.length !== 1 ? "s" : ""}`}
           </span>
 
@@ -1197,15 +1210,15 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
                   key={opt.key}
                   onClick={() => setSortMode(opt.key)}
                   style={{
-                    background: sortMode === opt.key ? "rgba(201,166,107,.18)" : "transparent",
-                    border: sortMode === opt.key ? `1px solid rgba(201,166,107,.35)` : "1px solid rgba(255,255,255,.08)",
+                    background: sortMode === opt.key ? T.goldA18 : "transparent",
+                    border: sortMode === opt.key ? `1px solid ${T.goldA35}` : "1px solid rgba(255,255,255,.08)",
                     borderRadius: 5, padding: "3px 9px", cursor: "pointer",
                     fontFamily: "'DM Sans',sans-serif", fontSize: 11, fontWeight: 500,
-                    color: sortMode === opt.key ? T.gold : T.text45,
+                    color: sortMode === opt.key ? T.gold : T.textDim,
                     transition: "all .15s",
                   }}
                   onMouseEnter={e => { if (sortMode !== opt.key) e.currentTarget.style.color = T.text; }}
-                  onMouseLeave={e => { if (sortMode !== opt.key) e.currentTarget.style.color = T.text45; }}
+                  onMouseLeave={e => { if (sortMode !== opt.key) e.currentTarget.style.color = T.textDim; }}
                 >
                   {opt.label}
                 </button>
@@ -1221,13 +1234,13 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
               aria-label="Shuffle play favourites"
               style={{
                 background: "none", border: "none", cursor: "pointer",
-                color: T.text45, padding: "4px 8px", lineHeight: 1,
+                color: T.textDim, padding: "4px 8px", lineHeight: 1,
                 display: "flex", alignItems: "center", gap: 5,
                 fontFamily: "'DM Sans',sans-serif", fontSize: 12,
                 transition: "color .15s",
               }}
               onMouseEnter={e => e.currentTarget.style.color = T.gold}
-              onMouseLeave={e => e.currentTarget.style.color = T.text45}
+              onMouseLeave={e => e.currentTarget.style.color = T.textDim}
             >
               <svg
                 width="14" height="14" viewBox="0 0 24 24" fill="currentColor"
@@ -1244,13 +1257,13 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
             onClick={onClose}
             style={{
               background: "none", border: "none", cursor: "pointer",
-              color: T.text45, padding: "4px 6px", lineHeight: 1,
+              color: T.textDim, padding: "4px 6px", lineHeight: 1,
               fontFamily: "'DM Sans',sans-serif", fontSize: 12,
               display: "flex", alignItems: "center", gap: 5,
               transition: "color .15s",
             }}
             onMouseEnter={e => e.currentTarget.style.color = T.text}
-            onMouseLeave={e => e.currentTarget.style.color = T.text45}
+            onMouseLeave={e => e.currentTarget.style.color = T.textDim}
             aria-label="Back to library"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
@@ -1262,7 +1275,7 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
 
         {/* States */}
         {loading && (
-          <div style={{ padding: "40px 20px", textAlign: "center", color: T.text45, fontFamily: "'DM Sans',sans-serif", fontSize: 14 }}>
+          <div style={{ padding: "40px 20px", textAlign: "center", color: T.textDim, fontFamily: "'DM Sans',sans-serif", fontSize: 14 }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill={T.gold} style={{ marginBottom: 10, opacity: .6, display: "block", margin: "0 auto 10px" }}>
               <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
             </svg>
@@ -1275,7 +1288,7 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
           </div>
         )}
         {!loading && !error && tracks.length === 0 && (
-          <div style={{ padding: "40px 20px", textAlign: "center", color: T.text45, fontFamily: "'DM Sans',sans-serif", fontSize: 14 }}>
+          <div style={{ padding: "40px 20px", textAlign: "center", color: T.textDim, fontFamily: "'DM Sans',sans-serif", fontSize: 14 }}>
             No starred tracks yet.
             <div style={{ fontSize: 12, marginTop: 6, opacity: .6 }}>Star tracks using the ★ icon in the tracklist.</div>
           </div>
@@ -1303,14 +1316,14 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
             {/* Track title */}
             <div style={{
               fontFamily: "'Playfair Display',serif", fontSize: 20, fontWeight: 600, lineHeight: 1.2,
-              color: playingFavTrack ? T.text : T.text45,
+              color: playingFavTrack ? T.text : T.textDim,
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             }}>
               {playingFavTrack?.title || "Nothing playing"}
             </div>
             {/* Artist · Album */}
             <div style={{
-              fontFamily: "'DM Sans',sans-serif", fontSize: 13, color: T.text55,
+              fontFamily: "'DM Sans',sans-serif", fontSize: 13, color: T.textMeta,
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             }}>
               {playingFavTrack
@@ -1319,7 +1332,7 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
             </div>
             {/* Progress bar + times */}
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: T.text45, width: 32, textAlign: "right", flexShrink: 0 }}>
+              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: T.textDim, width: 32, textAlign: "right", flexShrink: 0 }}>
                 {fmtTime(audioTime?.current)}
               </span>
               <input
@@ -1333,7 +1346,7 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
                   background: `linear-gradient(to right, #c9a66b ${progress}%, rgba(255,255,255,.08) ${progress}%)`
                 }}
               />
-              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: T.text45, width: 32, flexShrink: 0 }}>
+              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: T.textDim, width: 32, flexShrink: 0 }}>
                 {fmtTime(audioTime?.duration)}
               </span>
             </div>
@@ -1346,10 +1359,10 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
                   background: "none", border: "1px solid rgba(255,255,255,.1)",
                   borderRadius: "50%", width: 36, height: 36, cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  color: T.text65, transition: "color .15s, border-color .15s",
+                  color: T.textSub, transition: "color .15s, border-color .15s",
                 }}
                 onMouseEnter={e => { e.currentTarget.style.color = T.text; e.currentTarget.style.borderColor = "rgba(255,255,255,.3)"; }}
-                onMouseLeave={e => { e.currentTarget.style.color = T.text65; e.currentTarget.style.borderColor = "rgba(255,255,255,.1)"; }}
+                onMouseLeave={e => { e.currentTarget.style.color = T.textSub; e.currentTarget.style.borderColor = "rgba(255,255,255,.1)"; }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
               </button>
@@ -1361,7 +1374,7 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
                   display: "flex", alignItems: "center", justifyContent: "center",
                   background: `linear-gradient(135deg,${T.gold},${T.goldDark})`,
                   color: T.bg, cursor: "pointer",
-                  boxShadow: "0 2px 14px rgba(201,166,107,.35)",
+                  boxShadow: `0 2px 14px ${T.goldA35}`,
                   transition: "transform .1s",
                 }}
                 onMouseDown={e => { e.currentTarget.style.transform = "scale(.93)"; }}
@@ -1380,10 +1393,10 @@ function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, curren
                   background: "none", border: "1px solid rgba(255,255,255,.1)",
                   borderRadius: "50%", width: 36, height: 36, cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  color: T.text65, transition: "color .15s, border-color .15s",
+                  color: T.textSub, transition: "color .15s, border-color .15s",
                 }}
                 onMouseEnter={e => { e.currentTarget.style.color = T.text; e.currentTarget.style.borderColor = "rgba(255,255,255,.3)"; }}
-                onMouseLeave={e => { e.currentTarget.style.color = T.text65; e.currentTarget.style.borderColor = "rgba(255,255,255,.1)"; }}
+                onMouseLeave={e => { e.currentTarget.style.color = T.textSub; e.currentTarget.style.borderColor = "rgba(255,255,255,.1)"; }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
               </button>
@@ -1488,15 +1501,15 @@ function AlphabetScrubber({ letters, letterMap, jumpTo, onSearchOpen, onFavourit
           aria-label={favouritesActive ? "Back to library" : "Favourited tracks"}
           aria-pressed={favouritesActive}
           style={{
-            background: favouritesActive ? "rgba(201,166,107,.15)" : "none",
+            background: favouritesActive ? T.goldA15 : "none",
             border: "none", cursor: "pointer",
-            color: favouritesActive ? T.gold : T.text45, padding: "4px 0", marginBottom: 2,
+            color: favouritesActive ? T.gold : T.textDim, padding: "4px 0", marginBottom: 2,
             display: "flex", alignItems: "center", justifyContent: "center",
             width: 18, lineHeight: 1, borderRadius: 4,
             transition: "color .15s, background .15s",
           }}
           onMouseEnter={e => e.currentTarget.style.color = T.gold}
-          onMouseLeave={e => e.currentTarget.style.color = favouritesActive ? T.gold : T.text45}
+          onMouseLeave={e => e.currentTarget.style.color = favouritesActive ? T.gold : T.textDim}
         >
           <svg width={Math.min(33, (itemH - 1) * 3)} height={Math.min(33, (itemH - 1) * 3)} viewBox="0 0 24 24" fill="currentColor">
             {favouritesActive
@@ -1511,13 +1524,13 @@ function AlphabetScrubber({ letters, letterMap, jumpTo, onSearchOpen, onFavourit
           aria-label="Search albums"
           style={{
             background: "none", border: "none", cursor: "pointer",
-            color: T.text45, padding: "4px 0", marginBottom: 5,
+            color: T.textDim, padding: "4px 0", marginBottom: 5,
             display: "flex", alignItems: "center", justifyContent: "center",
             width: 18, lineHeight: 1,
             transition: "color .15s",
           }}
           onMouseEnter={e => e.currentTarget.style.color = T.gold}
-          onMouseLeave={e => e.currentTarget.style.color = T.text45}
+          onMouseLeave={e => e.currentTarget.style.color = T.textDim}
         >
           <svg width={Math.min(33, (itemH - 1) * 3)} height={Math.min(33, (itemH - 1) * 3)} viewBox="0 0 24 24" fill="currentColor">
             <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
@@ -1541,7 +1554,7 @@ function AlphabetScrubber({ letters, letterMap, jumpTo, onSearchOpen, onFavourit
                 fontFamily: "'DM Sans',sans-serif",
                 fontSize: Math.min(11, itemH - 1),
                 fontWeight: active === l ? 700 : 400,
-                color: active === l ? T.gold : T.text45,
+                color: active === l ? T.gold : T.textDim,
                 transition: "color .1s",
                 lineHeight: 1,
               }}
@@ -1567,7 +1580,7 @@ function SettingsPopover({ onClose, continuousPlay, onToggleContinuous, nextAlbu
   }, [onClose]);
 
   const rowS = { display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 0" };
-  const labelS = { fontFamily:"'DM Sans',sans-serif", fontSize:13, color:T.text65 };
+  const labelS = { fontFamily:"'DM Sans',sans-serif", fontSize:13, color:T.textSub };
   const dividerS = { borderTop:"1px solid rgba(255,255,255,.07)", margin:"2px 0" };
 
   return (
@@ -1578,7 +1591,7 @@ function SettingsPopover({ onClose, continuousPlay, onToggleContinuous, nextAlbu
       padding:"8px 14px 12px", boxShadow:"0 8px 32px rgba(0,0,0,.6)",
     }}>
       <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:11, fontWeight:600,
-        textTransform:"uppercase", letterSpacing:".08em", color:T.text45, paddingBottom:6 }}>
+        textTransform:"uppercase", letterSpacing:".08em", color:T.textDim, paddingBottom:6 }}>
         Playback
       </div>
 
@@ -1613,9 +1626,9 @@ function SettingsPopover({ onClose, continuousPlay, onToggleContinuous, nextAlbu
                 <button key={mode} onClick={() => onChangeNextMode(mode)} style={{
                   fontFamily:"'DM Sans',sans-serif", fontSize:12, cursor:"pointer",
                   padding:"4px 12px", borderRadius:20,
-                  background: nextAlbumMode === mode ? "rgba(201,166,107,.15)" : "rgba(255,255,255,.05)",
-                  border: nextAlbumMode === mode ? `1px solid rgba(201,166,107,.4)` : "1px solid rgba(255,255,255,.1)",
-                  color: nextAlbumMode === mode ? T.gold : T.text55,
+                  background: nextAlbumMode === mode ? T.goldA15 : "rgba(255,255,255,.05)",
+                  border: nextAlbumMode === mode ? `1px solid ${T.goldA40}` : "1px solid rgba(255,255,255,.1)",
+                  color: nextAlbumMode === mode ? T.gold : T.textMeta,
                   transition:"all .15s",
                 }}>
                   {mode === "sequential" ? "Next" : "Random"}
@@ -1685,11 +1698,11 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
   const stepStyle = {
     display:"flex", gap:10, alignItems:"flex-start",
     fontFamily:"'DM Sans',sans-serif", fontSize:13,
-    color:T.text65, lineHeight:1.55,
+    color:T.textSub, lineHeight:1.55,
   };
   const numStyle = {
     flexShrink:0, width:22, height:22, borderRadius:"50%",
-    background:"rgba(201,166,107,.15)", color:T.gold,
+    background:T.goldA15, color:T.gold,
     display:"flex", alignItems:"center", justifyContent:"center",
     fontSize:11, fontWeight:600, marginTop:1,
   };
@@ -1728,7 +1741,7 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
         <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
           {/* Server URL field */}
           <div>
-            <label style={{ fontFamily:"'DM Sans',sans-serif", fontSize:11, color:T.text55, textTransform:"uppercase", letterSpacing:".08em", display:"block", marginBottom:5 }}>
+            <label style={{ fontFamily:"'DM Sans',sans-serif", fontSize:11, color:T.textMeta, textTransform:"uppercase", letterSpacing:".08em", display:"block", marginBottom:5 }}>
               Server URL
             </label>
             <input
@@ -1739,14 +1752,14 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
               placeholder="192.168.0.2:32400"
               style={iS}
             />
-            <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:11, color:T.text45, marginTop:4, lineHeight:1.4 }}>
+            <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:11, color:T.textDim, marginTop:4, lineHeight:1.4 }}>
               Your Plex server's local IP and port. Find this in Plex Settings → Remote Access, or check your server machine's network settings. Default port is 32400.
             </div>
           </div>
 
           {/* Token field */}
           <div>
-            <label style={{ fontFamily:"'DM Sans',sans-serif", fontSize:11, color:T.text55, textTransform:"uppercase", letterSpacing:".08em", display:"block", marginBottom:5 }}>
+            <label style={{ fontFamily:"'DM Sans',sans-serif", fontSize:11, color:T.textMeta, textTransform:"uppercase", letterSpacing:".08em", display:"block", marginBottom:5 }}>
               X-Plex-Token
             </label>
             <input
@@ -1795,7 +1808,7 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
               borderRadius:10, padding:16,
               display:"flex", flexDirection:"column", gap:14,
             }}>
-              <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, fontWeight:600, color:T.text55, textTransform:"uppercase", letterSpacing:".08em", marginBottom:2 }}>
+              <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, fontWeight:600, color:T.textMeta, textTransform:"uppercase", letterSpacing:".08em", marginBottom:2 }}>
                 Method 1 — Browser Developer Tools (quickest)
               </div>
 
@@ -1818,7 +1831,7 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
 
               <div style={{ height:1, background:"rgba(255,255,255,.06)", margin:"4px 0" }} />
 
-              <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, fontWeight:600, color:T.text55, textTransform:"uppercase", letterSpacing:".08em", marginBottom:2 }}>
+              <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, fontWeight:600, color:T.textMeta, textTransform:"uppercase", letterSpacing:".08em", marginBottom:2 }}>
                 Method 2 — View XML (Plex admin only)
               </div>
 
@@ -1841,7 +1854,7 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
 
               <div style={{ height:1, background:"rgba(255,255,255,.06)", margin:"4px 0" }} />
 
-              <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, fontWeight:600, color:T.text55, textTransform:"uppercase", letterSpacing:".08em", marginBottom:2 }}>
+              <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, fontWeight:600, color:T.textMeta, textTransform:"uppercase", letterSpacing:".08em", marginBottom:2 }}>
                 Method 3 — cURL (for a persistent token)
               </div>
 
@@ -1851,7 +1864,7 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
                   <div style={{
                     background:"rgba(0,0,0,.4)", borderRadius:6, padding:"10px 12px",
                     marginTop:8, fontFamily:"'DM Mono', monospace", fontSize:11,
-                    color:T.text65, lineHeight:1.6,
+                    color:T.textSub, lineHeight:1.6,
                     overflowX:"auto", whiteSpace:"pre",
                   }}>{`curl -X POST https://plex.tv/users/sign_in.json \\
   -H "X-Plex-Client-Identifier: overflow-app" \\
@@ -1867,9 +1880,9 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
               </div>
 
               <div style={{
-                background:"rgba(201,166,107,.08)", borderRadius:6, padding:"10px 12px",
+                background:T.goldA8, borderRadius:6, padding:"10px 12px",
                 fontFamily:"'DM Sans',sans-serif", fontSize:12,
-                color:T.text50, lineHeight:1.5, marginTop:4,
+                color:T.textFaint, lineHeight:1.5, marginTop:4,
               }}>
                 <strong style={{color:T.gold}}>Note:</strong> If you use two-factor authentication, append your 2FA code directly to the end of your password (e.g. <span style={codeStyle}>mypassword123456</span>). Tokens generated via the browser methods tend to be temporary. The cURL method or Plex's PIN-based auth flow are better for apps.
               </div>
@@ -1882,7 +1895,7 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
             style={{
               borderRadius:8, width:"100%", height:42,
               background: status === "connecting"
-                ? "rgba(201,166,107,.3)"
+                ? T.goldA30
                 : `linear-gradient(135deg,${T.gold},${T.goldDark})`,
               border:"none", color:T.bg,
               fontFamily:"'DM Sans',sans-serif", fontSize:14, fontWeight:600,
@@ -1896,7 +1909,7 @@ function PlexConfig({ show, onClose, initialUrl, initialToken, onConnect }) {
 
         <div style={{
           fontFamily:"'DM Sans',sans-serif", fontSize:11,
-          color:T.text45, marginTop:14, lineHeight:1.4,
+          color:T.textDim, marginTop:14, lineHeight:1.4,
           display:"flex", alignItems:"flex-start", gap:6,
         }}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style={{flexShrink:0, marginTop:1, opacity:.5}}>
@@ -2223,6 +2236,11 @@ export default function App() {
     navigator.mediaSession.setActionHandler("play",  () => setPlaying(true));
     navigator.mediaSession.setActionHandler("pause", () => setPlaying(false));
     navigator.mediaSession.setActionHandler("nexttrack", () => {
+      if (showFavouritesRef.current && favQueueRef.current) {
+        const { tracks: fq, idx } = favQueueRef.current;
+        if (idx + 1 < fq.length) playFromFavouritesRef.current?.(fq[idx + 1], fq);
+        return;
+      }
       setTrackIdx(ti => {
         if (ti + 1 >= tracks.length) {
           if (continuousPlay) { advanceToNextAlbum(); return 0; }
@@ -2231,9 +2249,14 @@ export default function App() {
         return ti + 1;
       });
     });
-    navigator.mediaSession.setActionHandler("previoustrack", () =>
-      setTrackIdx(ti => Math.max(0, ti - 1))
-    );
+    navigator.mediaSession.setActionHandler("previoustrack", () => {
+      if (showFavouritesRef.current && favQueueRef.current) {
+        const { tracks: fq, idx } = favQueueRef.current;
+        if (idx > 0) playFromFavouritesRef.current?.(fq[idx - 1], fq);
+        return;
+      }
+      setTrackIdx(ti => Math.max(0, ti - 1));
+    });
     return () => {
       ["play","pause","nexttrack","previoustrack"].forEach(a =>
         navigator.mediaSession.setActionHandler(a, null)
@@ -2407,14 +2430,24 @@ export default function App() {
       if (e.key === "l" && !showSearch && !showPlex && !showFavourites && connected && sectionKey) setShowFavourites(true);
       if (e.key === "Escape" && showFavourites) { setShowFavourites(false); return; }
       if (e.key === "," && !showSearch && !showPlex) {
-        setTrackIdx(i => Math.max(0, i - 1));
-        setProgress(0);
-        setPlaying(true);
+        if (showFavourites && favQueueRef.current) {
+          const { tracks: fq, idx } = favQueueRef.current;
+          if (idx > 0) playFromFavouritesRef.current?.(fq[idx - 1], fq);
+        } else {
+          setTrackIdx(i => Math.max(0, i - 1));
+          setProgress(0);
+          setPlaying(true);
+        }
       }
       if (e.key === "." && !showSearch && !showPlex) {
-        setTrackIdx(i => Math.min(tracks.length - 1, i + 1));
-        setProgress(0);
-        setPlaying(true);
+        if (showFavourites && favQueueRef.current) {
+          const { tracks: fq, idx } = favQueueRef.current;
+          if (idx + 1 < fq.length) playFromFavouritesRef.current?.(fq[idx + 1], fq);
+        } else {
+          setTrackIdx(i => Math.min(tracks.length - 1, i + 1));
+          setProgress(0);
+          setPlaying(true);
+        }
       }
     };
     window.addEventListener("keydown", h);
@@ -2585,14 +2618,14 @@ export default function App() {
               <span style={{ fontFamily:"'Playfair Display',serif", fontSize:16, fontWeight:600, letterSpacing:".04em", color:T.text }}>
                 Overflow
               </span>
-              <span style={{ fontFamily:"'DM Mono',monospace", fontSize:10, color:T.text45, letterSpacing:".04em" }}>
+              <span style={{ fontFamily:"'DM Mono',monospace", fontSize:10, color:T.textDim, letterSpacing:".04em" }}>
                 v{__APP_VERSION__}
               </span>
             </div>
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:10 }}>
             {connected && (
-              <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, color:T.text65, letterSpacing:".04em" }}>
+              <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, color:T.textSub, letterSpacing:".04em" }}>
                 {visibleAlbums.length} albums
               </span>
             )}
@@ -2601,7 +2634,7 @@ export default function App() {
                 background: editMode ? "rgba(224,112,112,.12)" : "rgba(255,255,255,.04)",
                 border: editMode ? "1px solid rgba(224,112,112,.3)" : "1px solid rgba(255,255,255,.1)",
                 borderRadius:8, padding:"10px 12px",
-                color: editMode ? T.red : T.text55,
+                color: editMode ? T.red : T.textMeta,
                 cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
                 transition:"all .15s",
               }} aria-label={editMode ? "Exit edit mode" : "Edit library (e)"} aria-pressed={editMode} title={editMode ? "Exit edit mode (e)" : "Edit library (e)"}>
@@ -2613,7 +2646,7 @@ export default function App() {
                 background: showSettings ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.04)",
                 border:"1px solid rgba(255,255,255,.1)",
                 borderRadius:8, padding:"10px 12px",
-                color: showSettings ? T.text : T.text55,
+                color: showSettings ? T.text : T.textMeta,
                 cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
                 transition:"all .15s",
               }} aria-label="Settings" aria-expanded={showSettings} aria-haspopup="true">
@@ -2630,10 +2663,10 @@ export default function App() {
               )}
             </div>
             <button onClick={() => setShowPlex(true)} style={{
-              background: connected ? "rgba(201,166,107,.08)" : "rgba(255,255,255,.04)",
-              border: connected ? `1px solid rgba(201,166,107,.25)` : "1px solid rgba(255,255,255,.1)",
+              background: connected ? T.goldA8 : "rgba(255,255,255,.04)",
+              border: connected ? `1px solid ${T.goldA25}` : "1px solid rgba(255,255,255,.1)",
               borderRadius:8, padding:"6px 14px",
-              color: connected ? T.gold : T.text55,
+              color: connected ? T.gold : T.textMeta,
               fontFamily:"'DM Sans',sans-serif",
               fontSize:12, cursor:"pointer", letterSpacing:".04em",
             }}>
@@ -2643,7 +2676,7 @@ export default function App() {
         </div>
 
         {albums.length === 0 && !connected && (
-          <div style={{ textAlign:"center", color:T.text55, fontFamily:"'DM Sans',sans-serif", fontSize:15, padding:"80px 0" }}>
+          <div style={{ textAlign:"center", color:T.textMeta, fontFamily:"'DM Sans',sans-serif", fontSize:15, padding:"80px 0" }}>
             Connect Plex to browse your library
           </div>
         )}
@@ -2657,7 +2690,7 @@ export default function App() {
               : <button onClick={randomAlbum} title="Random album (r)" aria-label="Random album" style={{
                   background:"none", border:"none",
                   padding:"6px 10px 6px 8px", cursor:"pointer",
-                  color:T.text45, display:"flex", alignItems:"center", gap:5,
+                  color:T.textDim, display:"flex", alignItems:"center", gap:5,
                   fontFamily:"'DM Sans',sans-serif", fontSize:11,
                 }}>
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
@@ -2806,7 +2839,7 @@ export default function App() {
                 <div style={{ fontFamily:"'Playfair Display',serif", fontSize:16, color:T.text, marginBottom:4 }}>
                   Remove "{deleteConfirm.name}"?
                 </div>
-                <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, color:T.text45 }}>
+                <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:12, color:T.textDim }}>
                   {deleteConfirm.kind === "album" ? "Choose how to remove this album." : "Choose how to remove this track."}
                 </div>
               </div>
@@ -2820,7 +2853,7 @@ export default function App() {
                   }}
                 >
                   Hide from app
-                  <div style={{ fontSize:11, color:T.text45, marginTop:3 }}>
+                  <div style={{ fontSize:11, color:T.textDim, marginTop:3 }}>
                     Won't come back on sync. Reversible by clearing app data.
                   </div>
                 </button>
@@ -2843,7 +2876,7 @@ export default function App() {
                   onClick={() => setDeleteConfirm(null)}
                   style={{
                     background:"none", border:"none", padding:"8px 16px",
-                    color:T.text45, fontFamily:"'DM Sans',sans-serif",
+                    color:T.textDim, fontFamily:"'DM Sans',sans-serif",
                     fontSize:13, cursor:"pointer", textAlign:"center",
                   }}
                 >

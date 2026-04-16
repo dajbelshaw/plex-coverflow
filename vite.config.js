@@ -33,7 +33,17 @@ export default defineConfig({
             return
           }
 
-          const forwardHeaders = { ...req.headers, host: targetUrl.host }
+          // Block link-local (cloud metadata) addresses — allow localhost and RFC1918
+          // (RFC1918 must be allowed since Plex servers run on local network IPs)
+          if (/^169\.254\./.test(targetUrl.hostname)) {
+            res.statusCode = 403
+            res.end('Proxy target blocked')
+            return
+          }
+
+          // Strip cookies and auth headers before forwarding to prevent credential leakage
+          const { cookie, authorization, ...safeHeaders } = req.headers
+          const forwardHeaders = { ...safeHeaders, host: targetUrl.host }
 
           const lib = targetUrl.protocol === 'https:' ? https : http
           const proxyReq = lib.request(
