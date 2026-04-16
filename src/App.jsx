@@ -2410,7 +2410,9 @@ export default function App() {
         continuousAdvancing.current = false;
         // Keep playing=true so audio src effect picks up the new track and plays it
       } else if (pendingPlayRef.current) {
-        // Favourites playback pending — the pending-play effect will set trackIdx + playing
+        // Favourites playback pending — silence audio during carousel sweep; pending-play effect will restart it
+        setPlaying(false);
+        if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
       } else {
         setPlaying(false);
         if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
