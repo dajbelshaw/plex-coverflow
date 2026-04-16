@@ -79,6 +79,13 @@ async function plexDeleteItem(serverUrl, token, ratingKey) {
   await fetch(url, { method: "DELETE", headers: { Accept: "application/json" } });
 }
 
+async function plexFetchFavouriteTracks(serverUrl, token, sectionKey) {
+  const data = await plexFetch(
+    `${serverUrl}/library/sections/${sectionKey}/all?type=10&sort=addedAt%3Adesc&userRating%3E%3E0=1&X-Plex-Token=${token}`
+  );
+  return data.MediaContainer.Metadata || [];
+}
+
 /* =========================================================================
    FEATURE FLAGS
    ========================================================================= */
@@ -955,9 +962,149 @@ function SearchPalette({ albums, onSelect, onClose }) {
 }
 
 /* =========================================================================
+   FAVOURITES VIEW
+   - Replaces the CoverFlow + TrackList area (not an overlay)
+   - Fetches all rated tracks from Plex on open, sorted by addedAt desc
+   - Click a track to play it; PlayerControls remains visible below
+   ========================================================================= */
+function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose }) {
+  const [tracks, setTracks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    plexFetchFavouriteTracks(serverUrl, token, sectionKey)
+      .then(raw => {
+        setTracks(raw.map(t => ({
+          ratingKey: t.ratingKey,
+          title: t.title,
+          albumTitle: t.parentTitle || "",
+          artist: t.grandparentTitle || "",
+          albumId: t.parentRatingKey,
+          thumbUrl: t.parentThumb ? plexProxyUrl(serverUrl, `${t.parentThumb}?X-Plex-Token=${token}`) : null,
+          duration: t.duration || 0,
+          addedAt: t.addedAt || 0,
+        })));
+        setLoading(false);
+      })
+      .catch(() => { setError("Could not load favourites."); setLoading(false); });
+  }, [serverUrl, token, sectionKey]);
+
+  function formatDuration(ms) {
+    if (!ms) return "";
+    const s = Math.round(ms / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zIndex: 1 }}>
+      {/* Header */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "8px 20px 6px",
+        borderBottom: "1px solid rgba(255,255,255,.05)",
+        flexShrink: 0,
+      }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill={T.gold}>
+          <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+        </svg>
+        <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 12, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: T.text55 }}>
+          {loading ? "Favourites" : `Favourites · ${tracks.length} track${tracks.length !== 1 ? "s" : ""}`}
+        </span>
+        <div style={{ flex: 1 }} />
+        <button
+          onClick={onClose}
+          style={{
+            background: "none", border: "none", cursor: "pointer",
+            color: T.text45, padding: "4px 6px", lineHeight: 1,
+            fontFamily: "'DM Sans',sans-serif", fontSize: 12,
+            display: "flex", alignItems: "center", gap: 5,
+            transition: "color .15s",
+          }}
+          onMouseEnter={e => e.currentTarget.style.color = T.text}
+          onMouseLeave={e => e.currentTarget.style.color = T.text45}
+          aria-label="Back to library"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+          </svg>
+          Back
+        </button>
+      </div>
+
+      {/* Track list */}
+      <div style={{ flex: 1, overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,.1) transparent" }}>
+        {loading && (
+          <div style={{ padding: "40px 20px", textAlign: "center", color: T.text45, fontFamily: "'DM Sans',sans-serif", fontSize: 14 }}>
+            Loading…
+          </div>
+        )}
+        {error && (
+          <div style={{ padding: "40px 20px", textAlign: "center", color: T.red, fontFamily: "'DM Sans',sans-serif", fontSize: 14 }}>
+            {error}
+          </div>
+        )}
+        {!loading && !error && tracks.length === 0 && (
+          <div style={{ padding: "40px 20px", textAlign: "center", color: T.text45, fontFamily: "'DM Sans',sans-serif", fontSize: 14 }}>
+            No favourited tracks yet.
+            <div style={{ fontSize: 12, marginTop: 6, opacity: .6 }}>Heart tracks using the ♡ icon in the tracklist.</div>
+          </div>
+        )}
+        {!loading && !error && tracks.map((t, i) => (
+          <button
+            key={t.ratingKey}
+            onClick={() => onPlay(t)}
+            style={{
+              all: "unset", display: "flex", alignItems: "center", gap: 14,
+              padding: "8px 20px", cursor: "pointer", width: "100%", boxSizing: "border-box",
+              borderLeft: "2px solid transparent",
+              transition: "background .08s",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(201,166,107,.07)"; e.currentTarget.style.borderLeftColor = T.gold; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderLeftColor = "transparent"; }}
+          >
+            {/* Row number */}
+            <div style={{ width: 22, textAlign: "right", fontFamily: "'DM Mono',monospace", fontSize: 11, color: T.text45, flexShrink: 0 }}>
+              {i + 1}
+            </div>
+            {/* Album art */}
+            <div style={{ width: 44, height: 44, borderRadius: 5, overflow: "hidden", flexShrink: 0, boxShadow: "0 2px 8px rgba(0,0,0,.4)" }}>
+              {t.thumbUrl
+                ? <img src={t.thumbUrl} alt="" width={44} height={44} style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
+                : <AlbumArt album={{ id: t.albumId, title: t.albumTitle, artist: t.artist }} size={44} />
+              }
+            </div>
+            {/* Track info */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontFamily: "'DM Sans',sans-serif", fontSize: 14, color: T.text, fontWeight: 500,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>{t.title}</div>
+              <div style={{
+                fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: T.text50, marginTop: 2,
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>
+                <span style={{ color: T.text55 }}>{t.artist}</span>
+                {t.albumTitle && <span> · {t.albumTitle}</span>}
+              </div>
+            </div>
+            {/* Duration */}
+            <div style={{ fontFamily: "'DM Mono',monospace", fontSize: 12, color: T.text45, flexShrink: 0 }}>
+              {formatDuration(t.duration)}
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
    ALPHABET SCRUBBER
    ========================================================================= */
-function AlphabetScrubber({ letters, letterMap, jumpTo, onSearchOpen }) {
+function AlphabetScrubber({ letters, letterMap, jumpTo, onSearchOpen, onFavouritesOpen, favouritesActive }) {
   const [active, setActive] = useState(null);
   const indicatorRef = useRef(null);
   const stripRef = useRef(null);
@@ -1026,6 +1173,29 @@ function AlphabetScrubber({ letters, letterMap, jumpTo, onSearchOpen }) {
           transition: "background .15s",
         }}
       >
+        {/* Favourites icon */}
+        <button
+          onClick={onFavouritesOpen}
+          aria-label={favouritesActive ? "Back to library" : "Favourited tracks"}
+          aria-pressed={favouritesActive}
+          style={{
+            background: favouritesActive ? "rgba(201,166,107,.15)" : "none",
+            border: "none", cursor: "pointer",
+            color: favouritesActive ? T.gold : T.text45, padding: "4px 0", marginBottom: 2,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: 18, lineHeight: 1, borderRadius: 4,
+            transition: "color .15s, background .15s",
+          }}
+          onMouseEnter={e => e.currentTarget.style.color = T.gold}
+          onMouseLeave={e => e.currentTarget.style.color = favouritesActive ? T.gold : T.text45}
+        >
+          <svg width={Math.min(33, (itemH - 1) * 3)} height={Math.min(33, (itemH - 1) * 3)} viewBox="0 0 24 24" fill="currentColor">
+            {favouritesActive
+              ? <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+              : <path d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z"/>
+            }
+          </svg>
+        </button>
         {/* Search icon — 2× the letter font size */}
         <button
           onClick={onSearchOpen}
@@ -1477,8 +1647,10 @@ export default function App() {
   const trackShuffleRef = useRef(false);
   const shuffleOrderRef = useRef([]);
   const shufflePosRef = useRef(0);
+  const [sectionKey, setSectionKey] = useState(null);
   const [showPlex, setShowPlex] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [showFavourites, setShowFavourites] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null); // { kind:'album'|'track', id, name, albumId? }
   const [deleteError, setDeleteError] = useState("");
@@ -1494,7 +1666,7 @@ export default function App() {
   useEffect(() => { trackShuffleRef.current = trackShuffle; }, [trackShuffle]);
 
   // Keep overlayOpenRef in sync so carousel keyboard handler ignores input when overlays are open
-  useEffect(() => { overlayOpenRef.current = showSearch || showPlex || showSettings || !!deleteConfirm; }, [showSearch, showPlex, showSettings, deleteConfirm]);
+  useEffect(() => { overlayOpenRef.current = showSearch || showPlex || showSettings || showFavourites || !!deleteConfirm; }, [showSearch, showPlex, showSettings, showFavourites, deleteConfirm]);
 
   // Build a Fisher-Yates shuffled order, placing currentIdx first
   const buildShuffleOrder = useCallback((len, currentIdx) => {
@@ -1512,6 +1684,8 @@ export default function App() {
   // Audio element for real playback
   const audioRef = useRef(null);
   const fadeTimerRef = useRef(null);
+  // Pending play from Favourites: { albumId, ratingKey } — consumed once tracks load and carousel settles
+  const pendingPlayRef = useRef(null);
 
   // Fade volume to 0 over ~150ms then pause; restores volume for next play
   const fadeAndPause = useCallback((audio) => {
@@ -1624,6 +1798,22 @@ export default function App() {
       })
       .catch(() => {});
   }, [settled, connected, album?.id]);
+
+  // Consume pendingPlayRef once the carousel has settled on the target album and tracks are loaded
+  useEffect(() => {
+    if (!pendingPlayRef.current) return;
+    const { albumId, ratingKey } = pendingPlayRef.current;
+    if (visibleAlbums[settled]?.id !== albumId) return;
+    const loadedTracks = plexTracks[albumId];
+    if (!loadedTracks?.length) return;
+    const idx = loadedTracks.findIndex(t => t.ratingKey === ratingKey);
+    pendingPlayRef.current = null;
+    if (idx !== -1) {
+      setTrackIdx(idx);
+      setProgress(0);
+      setPlaying(true);
+    }
+  }, [settled, plexTracks, visibleAlbums]);
 
   // Keep onended up to date with current track list so last-track works correctly
   useEffect(() => {
@@ -1824,6 +2014,14 @@ export default function App() {
     });
   }, [serverUrl, token]);
 
+  const playFromFavourites = useCallback((favTrack) => {
+    setShowFavourites(false);
+    const albumIdx = visibleAlbums.findIndex(a => a.id === favTrack.albumId);
+    if (albumIdx === -1) return;
+    pendingPlayRef.current = { albumId: favTrack.albumId, ratingKey: favTrack.ratingKey };
+    jumpTo(albumIdx);
+  }, [visibleAlbums, jumpTo]);
+
   // Keyboard shortcuts: "/" search, "r" random, "f" favourite, "e" edit mode, "," prev track, "." next track
   useEffect(() => {
     const h = (e) => {
@@ -1837,6 +2035,8 @@ export default function App() {
       if (e.key === "r" && !showSearch && !showPlex) randomAlbum();
       if (e.key === "f" && !showSearch && !showPlex) toggleFavourite();
       if (e.key === "e" && !showSearch && !showPlex && connected) setEditMode(m => !m);
+      if (e.key === "l" && !showSearch && !showPlex && !showFavourites && connected && sectionKey) setShowFavourites(true);
+      if (e.key === "Escape" && showFavourites) { setShowFavourites(false); return; }
       if (e.key === "," && !showSearch && !showPlex) {
         setTrackIdx(i => Math.max(0, i - 1));
         setProgress(0);
@@ -1850,9 +2050,9 @@ export default function App() {
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [showSearch, showPlex, randomAlbum, toggleFavourite, tracks.length, deleteConfirm, connected]);
+  }, [showSearch, showPlex, showFavourites, randomAlbum, toggleFavourite, tracks.length, deleteConfirm, connected, sectionKey]);
 
-  // Reset on album change (skip stopping playback if continuous play triggered the advance)
+  // Reset on album change (skip stopping playback if continuous play or favourites triggered the advance)
   const prevSettled = useRef(settled);
   useEffect(() => {
     if (settled !== prevSettled.current) {
@@ -1862,6 +2062,8 @@ export default function App() {
       if (continuousAdvancing.current) {
         continuousAdvancing.current = false;
         // Keep playing=true so audio src effect picks up the new track and plays it
+      } else if (pendingPlayRef.current) {
+        // Favourites playback pending — the pending-play effect will set trackIdx + playing
       } else {
         setPlaying(false);
         if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
@@ -1892,15 +2094,16 @@ export default function App() {
     }
 
     // Always fetch fresh from Plex to pick up additions, deletions, and rating changes
-    let sectionKey, raw;
+    let sk, raw;
     try {
-      sectionKey = await plexFindMusicSection(url, tok);
-      raw = await plexFetchAlbums(url, tok, sectionKey);
+      sk = await plexFindMusicSection(url, tok);
+      raw = await plexFetchAlbums(url, tok, sk);
     } catch (e) {
       if (hadCache) return; // already showing cached data — swallow the error silently
       throw e;
     }
 
+    setSectionKey(sk);
     const mapped = raw.map(a => ({
       id: a.ratingKey,
       title: a.title,
@@ -2056,7 +2259,7 @@ export default function App() {
           </div>
         )}
 
-        {visibleAlbums.length > 0 && (
+        {!showFavourites && visibleAlbums.length > 0 && (
           <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:"0 0 2px", position:"relative", zIndex:1 }}>
             {editMode
               ? <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:11, color:T.red, letterSpacing:".08em", textTransform:"uppercase", opacity:.7 }}>
@@ -2075,14 +2278,16 @@ export default function App() {
           </div>
         )}
 
-        <CoverFlow
-          albums={visibleAlbums} renderPos={renderPos} settled={settled}
-          onWheel={onWheel} onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-          jumpTo={jumpTo}
-          editMode={editMode}
-          onRemoveAlbum={a => setDeleteConfirm({ kind: "album", id: a.id, name: a.title })}
-        />
+        {!showFavourites && (
+          <CoverFlow
+            albums={visibleAlbums} renderPos={renderPos} settled={settled}
+            onWheel={onWheel} onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+            jumpTo={jumpTo}
+            editMode={editMode}
+            onRemoveAlbum={a => setDeleteConfirm({ kind: "album", id: a.id, name: a.title })}
+          />
+        )}
 
         <div style={{ padding:"6px 0 14px", flexShrink:0 }}>
           <PlayerControls
@@ -2118,26 +2323,36 @@ export default function App() {
           />
         </div>
 
-        <div style={{ flex:1, overflow:"hidden", paddingBottom:20 }}>
-          <TrackList
-            tracks={tracks}
-            currentTrackIndex={trackIdx}
-            onSelectTrack={i => {
-              setTrackIdx(i);
-              setProgress(0);
-              setPlaying(true);
-            }}
-            onToggleTrackFavourite={connected && album ? (ratingKey => toggleTrackFavourite(album.id, ratingKey)) : null}
-            hotTrackRatingKeys={HOT_TRACKS_ENABLED && connected
-              ? new Set(getHotTracks(tracks, { fallbackToViews: true }).map(t => t.ratingKey))
-              : null}
-            editMode={editMode}
-            onHideTrack={connected && album ? ((ratingKey, name) => setDeleteConfirm({ kind: "track", id: ratingKey, name, albumId: album.id })) : null}
+        {showFavourites && connected && sectionKey ? (
+          <FavouritesPanel
+            serverUrl={serverUrl}
+            token={token}
+            sectionKey={sectionKey}
+            onPlay={playFromFavourites}
+            onClose={() => setShowFavourites(false)}
           />
-        </div>
+        ) : (
+          <div style={{ flex:1, overflow:"hidden", paddingBottom:20 }}>
+            <TrackList
+              tracks={tracks}
+              currentTrackIndex={trackIdx}
+              onSelectTrack={i => {
+                setTrackIdx(i);
+                setProgress(0);
+                setPlaying(true);
+              }}
+              onToggleTrackFavourite={connected && album ? (ratingKey => toggleTrackFavourite(album.id, ratingKey)) : null}
+              hotTrackRatingKeys={HOT_TRACKS_ENABLED && connected
+                ? new Set(getHotTracks(tracks, { fallbackToViews: true }).map(t => t.ratingKey))
+                : null}
+              editMode={editMode}
+              onHideTrack={connected && album ? ((ratingKey, name) => setDeleteConfirm({ kind: "track", id: ratingKey, name, albumId: album.id })) : null}
+            />
+          </div>
+        )}
 
         {connected && letters.length > 1 && (
-          <AlphabetScrubber letters={letters} letterMap={letterMap} jumpTo={jumpTo} onSearchOpen={() => setShowSearch(true)} />
+          <AlphabetScrubber letters={letters} letterMap={letterMap} jumpTo={jumpTo} onSearchOpen={() => setShowSearch(true)} onFavouritesOpen={() => setShowFavourites(f => !f)} favouritesActive={showFavourites} />
         )}
 
         {showSearch && visibleAlbums.length > 0 && (
