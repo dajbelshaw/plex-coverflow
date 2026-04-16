@@ -246,6 +246,7 @@ function useSpringCarousel(itemCount, initialIndex = 7, overlayOpenRef) {
   const lastT = useRef(0);
   const dragVel = useRef(0);
   const wheelTO = useRef(null);
+  const lastFocusTime = useRef(0);
 
   const STIFF = 170;
   const DAMP = 22;
@@ -297,11 +298,21 @@ function useSpringCarousel(itemCount, initialIndex = 7, overlayOpenRef) {
     raf.current = requestAnimationFrame(tick);
   }, [tick]);
 
+  // Track when window gains focus so we can ignore spurious arrow key events from macOS space switching
+  useEffect(() => {
+    const onFocus = () => { lastFocusTime.current = Date.now(); };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
   // Keyboard
   useEffect(() => {
     const h = (e) => {
       if (overlayOpenRef?.current) return;
       if (e.metaKey || e.ctrlKey) return;
+      // Ignore arrow events fired within 400ms of window gaining focus — macOS space switching
+      // can leak arrow key events into the WKWebView right as the window re-focuses.
+      if (Date.now() - lastFocusTime.current < 400) return;
       if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
         e.preventDefault();
         tgt.current = clamp(Math.round(tgt.current) - 1, 0, itemCount - 1);
@@ -2100,22 +2111,6 @@ export default function App() {
       .catch(() => {});
   }, [settled, connected, album?.id]);
 
-  // Consume pendingPlayRef once the carousel has settled on the target album and tracks are loaded
-  useEffect(() => {
-    if (!pendingPlayRef.current) return;
-    const { albumId, ratingKey } = pendingPlayRef.current;
-    if (visibleAlbums[settled]?.id !== albumId) return;
-    const loadedTracks = plexTracks[albumId];
-    if (!loadedTracks?.length) return;
-    const idx = loadedTracks.findIndex(t => t.ratingKey === ratingKey);
-    pendingPlayRef.current = null;
-    if (idx !== -1) {
-      setTrackIdx(idx);
-      setProgress(0);
-      setPlaying(true);
-    }
-  }, [settled, plexTracks, visibleAlbums]);
-
   // Keep onended up to date with current track list so last-track works correctly
   useEffect(() => {
     const audio = audioRef.current;
@@ -2419,6 +2414,24 @@ export default function App() {
       }
     }
   }, [settled]);
+
+  // Consume pendingPlayRef once the carousel has settled on the target album and tracks are loaded.
+  // IMPORTANT: this effect must run AFTER the album-change effect above so that its state updates
+  // (setTrackIdx/setPlaying) are applied last and win over the album-change resets.
+  useEffect(() => {
+    if (!pendingPlayRef.current) return;
+    const { albumId, ratingKey } = pendingPlayRef.current;
+    if (visibleAlbums[settled]?.id !== albumId) return;
+    const loadedTracks = plexTracks[albumId];
+    if (!loadedTracks?.length) return;
+    const idx = loadedTracks.findIndex(t => t.ratingKey === ratingKey);
+    pendingPlayRef.current = null;
+    if (idx !== -1) {
+      setTrackIdx(idx);
+      setProgress(0);
+      setPlaying(true);
+    }
+  }, [settled, plexTracks, visibleAlbums]);
 
 
   async function handleConnect(url, tok) {
