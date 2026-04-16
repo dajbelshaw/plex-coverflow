@@ -2194,7 +2194,7 @@ export default function App() {
   }, [serverUrl, token]);
 
   const playFromFavourites = useCallback((favTrack) => {
-    setShowFavourites(false);
+    // Stay in Favourites view — carousel navigates silently in the background
     const albumIdx = visibleAlbums.findIndex(a => a.id === favTrack.albumId);
     if (albumIdx === -1) return;
     pendingPlayRef.current = { albumId: favTrack.albumId, ratingKey: favTrack.ratingKey };
