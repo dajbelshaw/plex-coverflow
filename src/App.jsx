@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useEffect, useMemo, memo } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { List as VirtualList } from "react-window";
 
 /* =========================================================================
    DESIGN TOKENS
@@ -81,38 +80,11 @@ async function plexFetchTracks(serverUrl, token, ratingKey) {
   return data.MediaContainer.Metadata || [];
 }
 
-async function plexRate(serverUrl, token, ratingKey, rating) {
-  const url = plexProxyUrl(serverUrl,
-    `/:/rate?key=${ratingKey}&identifier=com.plexapp.plugins.library&rating=${rating}&X-Plex-Token=${token}`
-  );
-  await fetch(url, { method: "PUT", headers: { Accept: "application/json" } });
-}
-
 async function plexDeleteItem(serverUrl, token, ratingKey) {
   const url = plexProxyUrl(serverUrl, `/library/metadata/${ratingKey}?X-Plex-Token=${token}`);
   await fetch(url, { method: "DELETE", headers: { Accept: "application/json" } });
 }
 
-async function plexFetchFavouriteTracks(serverUrl, token, sectionKey) {
-  // Plex maintains a smart playlist called "❤️ Tracks" that contains only
-  // individually-hearted tracks (not album-level hearts). Use that when it
-  // exists; fall back to the ratings query otherwise.
-  try {
-    const playlists = await plexFetch(`${serverUrl}/playlists?X-Plex-Token=${token}`);
-    const likedPlaylist = (playlists.MediaContainer.Metadata || []).find(
-      p => p.playlistType === "audio" && p.smart === true && /❤/.test(p.title) && /track/i.test(p.title)
-    );
-    if (likedPlaylist) {
-      const items = await plexFetch(`${serverUrl}/playlists/${likedPlaylist.ratingKey}/items?X-Plex-Token=${token}`);
-      return items.MediaContainer.Metadata || [];
-    }
-  } catch {}
-  // Fallback: all rated tracks (includes album-inherited ratings)
-  const data = await plexFetch(
-    `${serverUrl}/library/sections/${sectionKey}/all?type=10&sort=addedAt%3Adesc&userRating%3E%3E0=1&X-Plex-Token=${token}`
-  );
-  return data.MediaContainer.Metadata || [];
-}
 
 /* =========================================================================
    FEATURE FLAGS
@@ -643,7 +615,7 @@ function fmtTime(s) {
   return `${m}:${sec}`;
 }
 
-function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onShuffleTracks, isShuffling, currentTrack, album, progress, onSeek, audioTime, isFavourite, onToggleFavourite }) {
+function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onShuffleTracks, isShuffling, currentTrack, album, progress, onSeek, audioTime }) {
   const trackName = typeof currentTrack === "string" ? currentTrack : currentTrack?.title;
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10, padding:"0 40px" }}>
@@ -655,18 +627,6 @@ function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onShuffleTrack
           <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:13, color:T.textMeta, letterSpacing:".04em", textTransform:"uppercase" }}>
             {album ? `${album.artist}  ·  ${album.title}` : ""}
           </div>
-          {album && (
-            <button onClick={onToggleFavourite} aria-label={isFavourite ? "Unfavourite" : "Favourite"} aria-pressed={isFavourite}
-              style={{ background:"none", border:"none", padding:"11px 8px", margin:"-11px -8px", cursor:"pointer",
-                color: isFavourite ? T.gold : T.textDim, display:"flex", alignItems:"center", lineHeight:1,
-                transition:"color .2s",
-              }}>
-              {isFavourite
-                ? <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
-                : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z"/></svg>
-              }
-            </button>
-          )}
         </div>
       </div>
 
@@ -723,7 +683,7 @@ const pS = {
 /* =========================================================================
    TRACK LIST
    ========================================================================= */
-function TrackList({ tracks, currentTrackIndex, onSelectTrack, onToggleTrackFavourite, hotTrackRatingKeys, editMode, onHideTrack }) {
+function TrackList({ tracks, currentTrackIndex, onSelectTrack, hotTrackRatingKeys, editMode, onHideTrack }) {
   if (!tracks?.length) return null;
   return (
     <div style={{ maxWidth:480, margin:"0 auto", padding:"0 20px", height:"100%", display:"flex", flexDirection:"column" }}>
@@ -745,7 +705,6 @@ function TrackList({ tracks, currentTrackIndex, onSelectTrack, onToggleTrackFavo
             : t.duration
               ? `${Math.floor(t.duration/60000)}:${String(Math.floor((t.duration%60000)/1000)).padStart(2,"0")}`
               : null;
-          const fav = t.userRating > 0;
           const hot = HOT_TRACKS_ENABLED && hotTrackRatingKeys?.has(t.ratingKey);
           return (
             <button
@@ -761,25 +720,9 @@ function TrackList({ tracks, currentTrackIndex, onSelectTrack, onToggleTrackFavo
                 {name}
               </span>
               {dur && (
-                <span style={{ marginLeft:"auto", fontFamily:"'DM Sans',sans-serif", fontSize:12, color:T.textDim, flexShrink:0, paddingRight: onToggleTrackFavourite ? 4 : 0 }}>
+                <span style={{ marginLeft:"auto", fontFamily:"'DM Sans',sans-serif", fontSize:12, color:T.textDim, flexShrink:0 }}>
                   {dur}
                 </span>
-              )}
-              {onToggleTrackFavourite && (
-                <button
-                  className="track-fav"
-                  data-active={fav ? "true" : undefined}
-                  aria-label={fav ? "Unfavourite track" : "Favourite track"}
-                  aria-pressed={fav}
-                  onClick={e => { e.stopPropagation(); onToggleTrackFavourite(t.ratingKey); }}
-                  style={{ all:"unset", cursor:"pointer", flexShrink:0, display:"flex", alignItems:"center",
-                    color: fav ? T.gold : T.textDim, lineHeight:1, padding:"4px 2px", margin:"-4px -2px" }}
-                >
-                  {fav
-                    ? <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
-                    : <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z"/></svg>
-                  }
-                </button>
               )}
               {HOT_TRACKS_ENABLED && (
                 <span aria-label={hot ? "Hot track" : undefined} style={{ flexShrink:0, fontSize:12, lineHeight:1, width:20, textAlign:"center", opacity: hot ? 0.9 : 0 }}>🔥</span>
@@ -1001,432 +944,9 @@ function SearchPalette({ albums, onSelect, onClose }) {
 }
 
 /* =========================================================================
-   FAVOURITES VIEW HELPERS
-   ========================================================================= */
-function formatFavDuration(ms) {
-  if (!ms) return "";
-  const s = Math.round(ms / 1000);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
-
-// Animated equalizer bars shown next to the currently-playing track
-function PlayingEqualizer() {
-  return (
-    <span aria-hidden="true" style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 14 }}>
-      {[0, 1, 2].map(i => (
-        <span key={i} style={{
-          display: "block", width: 3, borderRadius: 2,
-          background: T.gold,
-          animation: `favEq${i + 1} .9s ease-in-out infinite alternate`,
-        }} />
-      ))}
-    </span>
-  );
-}
-
-const FAV_ROW_H = 60; // px — must match rowHeight in VirtualList
-
-// Virtualised row — memo so react-window doesn't re-render unchanged rows
-const FavTrackRow = memo(function FavTrackRow({ index, style, tracks, onPlay, currentRatingKey }) {
-  const t = tracks[index];
-  const isPlaying = t.ratingKey === currentRatingKey;
-
-  return (
-    <div style={style}>
-      <button
-        onClick={() => onPlay(t, tracks)}
-        aria-label={`Play ${t.title} by ${t.artist}`}
-        style={{
-          all: "unset", display: "flex", alignItems: "center", gap: 14,
-          padding: "0 20px", cursor: "pointer",
-          width: "100%", height: "100%", boxSizing: "border-box",
-          borderLeft: `2px solid ${isPlaying ? T.gold : "transparent"}`,
-          background: isPlaying ? T.goldA7 : "transparent",
-          transition: "background .08s, border-left-color .1s",
-        }}
-        onMouseEnter={e => {
-          if (!isPlaying) {
-            e.currentTarget.style.background = T.goldA7;
-            e.currentTarget.style.borderLeftColor = T.gold;
-          }
-        }}
-        onMouseLeave={e => {
-          if (!isPlaying) {
-            e.currentTarget.style.background = "transparent";
-            e.currentTarget.style.borderLeftColor = "transparent";
-          }
-        }}
-      >
-        {/* Playing indicator */}
-        <div style={{ width: 22, display: "flex", justifyContent: "center", flexShrink: 0 }}>
-          {isPlaying && <PlayingEqualizer />}
-        </div>
-        {/* Album art */}
-        <div style={{ width: 44, height: 44, borderRadius: 5, overflow: "hidden", flexShrink: 0, boxShadow: "0 2px 8px rgba(0,0,0,.4)" }}>
-          {t.thumbUrl
-            ? <img src={t.thumbUrl} alt="" width={44} height={44} loading="lazy"
-                style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
-            : <AlbumArt album={{ id: t.albumId, title: t.albumTitle, artist: t.artist }} size={44} />
-          }
-        </div>
-        {/* Track info */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{
-            fontFamily: "'DM Sans',sans-serif", fontSize: 14,
-            color: isPlaying ? T.gold : T.text,
-            fontWeight: isPlaying ? 600 : 500,
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-            transition: "color .15s",
-          }}>{t.title}</div>
-          <div style={{
-            fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: T.textFaint, marginTop: 2,
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>
-            <span style={{ color: T.textMeta }}>{t.artist}</span>
-            {t.albumTitle && <span> · {t.albumTitle}</span>}
-          </div>
-        </div>
-        {/* Duration */}
-        <div style={{ fontFamily: "'DM Mono',monospace", fontSize: 12, color: T.textDim, flexShrink: 0 }}>
-          {formatFavDuration(t.duration)}
-        </div>
-      </button>
-    </div>
-  );
-});
-
-/* =========================================================================
-   FAVOURITES VIEW
-   - Replaces the CoverFlow + TrackList area (not an overlay)
-   - Fetches only individually-rated tracks (album-rated tracks excluded)
-   - Click a track to play it; PlayerControls remains visible below
-   ========================================================================= */
-function FavouritesPanel({ serverUrl, token, sectionKey, onPlay, onClose, currentRatingKey, currentTrack, playing, onPlayPause, onFavPrev, onFavNext, progress, audioTime, onSeek }) {
-  const [tracks, setTracks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [sortMode, setSortMode] = useState("recent"); // "recent" | "alpha" | "artist"
-  const [shuffling, setShuffling] = useState(false);
-  const listContainerRef = useRef(null);
-  const [listHeight, setListHeight] = useState(500);
-
-  useEffect(() => {
-    setLoading(true);
-    setError(null);
-    plexFetchFavouriteTracks(serverUrl, token, sectionKey)
-      .then(raw => {
-        setTracks(raw.map(t => ({
-          ratingKey: t.ratingKey,
-          title: t.title,
-          albumTitle: t.parentTitle || "",
-          artist: t.grandparentTitle || "",
-          albumId: t.parentRatingKey,
-          thumbUrl: t.parentThumb ? plexProxyUrl(serverUrl, `${t.parentThumb}?X-Plex-Token=${token}`) : null,
-          duration: t.duration || 0,
-          addedAt: t.addedAt || 0,
-        })));
-        setLoading(false);
-      })
-      .catch(() => { setError("Could not load favourites."); setLoading(false); });
-  }, [serverUrl, token, sectionKey]);
-
-  // Measure the list container so react-window knows its height
-  useEffect(() => {
-    if (!listContainerRef.current) return;
-    const ro = new ResizeObserver(([entry]) => setListHeight(entry.contentRect.height));
-    ro.observe(listContainerRef.current);
-    return () => ro.disconnect();
-  }, []);
-
-  const sortedTracks = useMemo(() => {
-    if (sortMode === "alpha")   return [...tracks].sort((a, b) => a.title.localeCompare(b.title));
-    if (sortMode === "artist")  return [...tracks].sort((a, b) => a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title));
-    return tracks; // "recent" — API order (addedAt desc)
-  }, [tracks, sortMode]);
-
-  // Stable rowProps so react-window rows don't re-render on unrelated state changes
-  const rowProps = useMemo(() => ({ tracks: sortedTracks, onPlay, currentRatingKey }), [sortedTracks, onPlay, currentRatingKey]);
-
-  // Track currently playing (for integrated controls bar); fall back to the
-  // main player's track when a non-favourited track is playing
-  const playingFavTrack = useMemo(() =>
-    currentRatingKey
-      ? (tracks.find(t => t.ratingKey === currentRatingKey) || currentTrack || null)
-      : null,
-    [tracks, currentRatingKey, currentTrack]
-  );
-
-  function shufflePlay() {
-    if (!sortedTracks.length) return;
-    setShuffling(true);
-    setTimeout(() => setShuffling(false), 600);
-    const shuffled = [...sortedTracks].sort(() => Math.random() - 0.5);
-    onPlay(shuffled[0], shuffled);
-  }
-
-  const SORT_OPTS = [
-    { key: "recent", label: "Recent" },
-    { key: "alpha",  label: "A–Z" },
-    { key: "artist", label: "Artist" },
-  ];
-
-  return (
-    <>
-      {/* Keyframes for the equalizer bars and panel entrance */}
-      <style>{`
-        @keyframes favEq1 { from { height: 4px; } to { height: 14px; } }
-        @keyframes favEq2 { from { height: 8px; } to { height: 4px; } }
-        @keyframes favEq3 { from { height: 12px; } to { height: 6px; } }
-        @keyframes favPanelIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes favShuffleSpin { 0% { transform: scale(1) rotate(0deg); } 40% { transform: scale(1.25) rotate(-20deg); } 100% { transform: scale(1) rotate(0deg); } }
-      `}</style>
-
-      <div style={{
-        flex: 1, display: "flex", flexDirection: "column", overflow: "hidden",
-        position: "relative", zIndex: 1,
-        animation: "favPanelIn .2s ease-out both",
-      }}>
-        {/* Header */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 10,
-          padding: "8px 20px 8px",
-          borderBottom: "1px solid rgba(255,255,255,.05)",
-          flexShrink: 0,
-        }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill={T.gold} style={{ flexShrink: 0 }}>
-            <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-          </svg>
-          <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 12, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: T.textMeta, flexShrink: 0 }}>
-            {loading ? "Favourites" : `Favourites · ${tracks.length} track${tracks.length !== 1 ? "s" : ""}`}
-          </span>
-
-          <div style={{ flex: 1 }} />
-
-          {/* Sort pills */}
-          {!loading && !error && tracks.length > 0 && (
-            <div style={{ display: "flex", gap: 4 }}>
-              {SORT_OPTS.map(opt => (
-                <button
-                  key={opt.key}
-                  onClick={() => setSortMode(opt.key)}
-                  style={{
-                    background: sortMode === opt.key ? T.goldA18 : "transparent",
-                    border: sortMode === opt.key ? `1px solid ${T.goldA35}` : "1px solid rgba(255,255,255,.08)",
-                    borderRadius: 5, padding: "3px 9px", cursor: "pointer",
-                    fontFamily: "'DM Sans',sans-serif", fontSize: 11, fontWeight: 500,
-                    color: sortMode === opt.key ? T.gold : T.textDim,
-                    transition: "all .15s",
-                  }}
-                  onMouseEnter={e => { if (sortMode !== opt.key) e.currentTarget.style.color = T.text; }}
-                  onMouseLeave={e => { if (sortMode !== opt.key) e.currentTarget.style.color = T.textDim; }}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Shuffle play button */}
-          {!loading && !error && tracks.length > 0 && (
-            <button
-              onClick={shufflePlay}
-              title="Play a random track from favourites"
-              aria-label="Shuffle play favourites"
-              style={{
-                background: "none", border: "none", cursor: "pointer",
-                color: T.textDim, padding: "4px 8px", lineHeight: 1,
-                display: "flex", alignItems: "center", gap: 5,
-                fontFamily: "'DM Sans',sans-serif", fontSize: 12,
-                transition: "color .15s",
-              }}
-              onMouseEnter={e => e.currentTarget.style.color = T.gold}
-              onMouseLeave={e => e.currentTarget.style.color = T.textDim}
-            >
-              <svg
-                width="14" height="14" viewBox="0 0 24 24" fill="currentColor"
-                style={{ animation: shuffling ? "favShuffleSpin .6s ease-out" : "none" }}
-              >
-                <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
-              </svg>
-              Shuffle
-            </button>
-          )}
-
-          {/* Back */}
-          <button
-            onClick={onClose}
-            style={{
-              background: "none", border: "none", cursor: "pointer",
-              color: T.textDim, padding: "4px 6px", lineHeight: 1,
-              fontFamily: "'DM Sans',sans-serif", fontSize: 12,
-              display: "flex", alignItems: "center", gap: 5,
-              transition: "color .15s",
-            }}
-            onMouseEnter={e => e.currentTarget.style.color = T.text}
-            onMouseLeave={e => e.currentTarget.style.color = T.textDim}
-            aria-label="Back to library"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
-            </svg>
-            Back
-          </button>
-        </div>
-
-        {/* States */}
-        {loading && (
-          <div style={{ padding: "40px 20px", textAlign: "center", color: T.textDim, fontFamily: "'DM Sans',sans-serif", fontSize: 14 }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill={T.gold} style={{ marginBottom: 10, opacity: .6, display: "block", margin: "0 auto 10px" }}>
-              <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-            </svg>
-            Finding your starred tracks…
-          </div>
-        )}
-        {error && (
-          <div style={{ padding: "40px 20px", textAlign: "center", color: T.red, fontFamily: "'DM Sans',sans-serif", fontSize: 14 }}>
-            {error}
-          </div>
-        )}
-        {!loading && !error && tracks.length === 0 && (
-          <div style={{ padding: "40px 20px", textAlign: "center", color: T.textDim, fontFamily: "'DM Sans',sans-serif", fontSize: 14 }}>
-            No starred tracks yet.
-            <div style={{ fontSize: 12, marginTop: 6, opacity: .6 }}>Star tracks using the ★ icon in the tracklist.</div>
-          </div>
-        )}
-
-        {/* ── Now Playing ──────────────────────────────────────────── */}
-        <div style={{
-          flexShrink: 0,
-          borderBottom: "1px solid rgba(255,255,255,.07)",
-          padding: "16px 20px 18px",
-          display: "flex", gap: 18, alignItems: "center",
-          background: "rgba(255,255,255,.02)",
-        }}>
-          {/* Album art */}
-          <div style={{ width: 80, height: 80, borderRadius: 8, overflow: "hidden", flexShrink: 0, boxShadow: "0 4px 20px rgba(0,0,0,.6)" }}>
-            {playingFavTrack?.thumbUrl
-              ? <img src={playingFavTrack.thumbUrl} alt="" width={80} height={80} loading="lazy"
-                  style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
-              : <AlbumArt album={{ id: playingFavTrack?.albumId ?? 0, title: playingFavTrack?.albumTitle ?? "", artist: playingFavTrack?.artist ?? "" }} size={80} />
-            }
-          </div>
-
-          {/* Info + progress + transport */}
-          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-            {/* Track title */}
-            <div style={{
-              fontFamily: "'Playfair Display',serif", fontSize: 20, fontWeight: 600, lineHeight: 1.2,
-              color: playingFavTrack ? T.text : T.textDim,
-              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-            }}>
-              {playingFavTrack?.title || "Nothing playing"}
-            </div>
-            {/* Artist · Album */}
-            <div style={{
-              fontFamily: "'DM Sans',sans-serif", fontSize: 13, color: T.textMeta,
-              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-            }}>
-              {playingFavTrack
-                ? [playingFavTrack.artist, playingFavTrack.albumTitle].filter(Boolean).join(" · ")
-                : "Select a track from the list below"}
-            </div>
-            {/* Progress bar + times */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: T.textDim, width: 32, textAlign: "right", flexShrink: 0 }}>
-                {fmtTime(audioTime?.current)}
-              </span>
-              <input
-                type="range" min="0" max="100" step="0.1"
-                value={progress}
-                onChange={e => onSeek(Number(e.target.value))}
-                className="seek-bar"
-                aria-label="Playback position"
-                style={{
-                  flex: 1, maxWidth: "none",
-                  background: `linear-gradient(to right, #c9a66b ${progress}%, rgba(255,255,255,.08) ${progress}%)`
-                }}
-              />
-              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: 11, color: T.textDim, width: 32, flexShrink: 0 }}>
-                {fmtTime(audioTime?.duration)}
-              </span>
-            </div>
-            {/* Transport */}
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <button
-                onClick={onFavPrev}
-                aria-label="Previous favourite track"
-                style={{
-                  background: "none", border: "1px solid rgba(255,255,255,.1)",
-                  borderRadius: "50%", width: 36, height: 36, cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  color: T.textSub, transition: "color .15s, border-color .15s",
-                }}
-                onMouseEnter={e => { e.currentTarget.style.color = T.text; e.currentTarget.style.borderColor = "rgba(255,255,255,.3)"; }}
-                onMouseLeave={e => { e.currentTarget.style.color = T.textSub; e.currentTarget.style.borderColor = "rgba(255,255,255,.1)"; }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
-              </button>
-              <button
-                onClick={onPlayPause}
-                aria-label={playing ? "Pause" : "Play"}
-                style={{
-                  borderRadius: "50%", width: 48, height: 48, border: "none", flexShrink: 0,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  background: `linear-gradient(135deg,${T.gold},${T.goldDark})`,
-                  color: T.bg, cursor: "pointer",
-                  boxShadow: `0 2px 14px ${T.goldA35}`,
-                  transition: "transform .1s",
-                }}
-                onMouseDown={e => { e.currentTarget.style.transform = "scale(.93)"; }}
-                onMouseUp={e => { e.currentTarget.style.transform = "scale(1)"; }}
-                onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; }}
-              >
-                {playing
-                  ? <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-                  : <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                }
-              </button>
-              <button
-                onClick={onFavNext}
-                aria-label="Next favourite track"
-                style={{
-                  background: "none", border: "1px solid rgba(255,255,255,.1)",
-                  borderRadius: "50%", width: 36, height: 36, cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  color: T.textSub, transition: "color .15s, border-color .15s",
-                }}
-                onMouseEnter={e => { e.currentTarget.style.color = T.text; e.currentTarget.style.borderColor = "rgba(255,255,255,.3)"; }}
-                onMouseLeave={e => { e.currentTarget.style.color = T.textSub; e.currentTarget.style.borderColor = "rgba(255,255,255,.1)"; }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Virtualised track list */}
-        <div ref={listContainerRef} style={{ flex: 1, overflow: "hidden" }}>
-          {!loading && !error && sortedTracks.length > 0 && (
-            <VirtualList
-              height={listHeight}
-              rowCount={sortedTracks.length}
-              rowHeight={FAV_ROW_H}
-              width="100%"
-              rowComponent={FavTrackRow}
-              rowProps={rowProps}
-              style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,.1) transparent" }}
-            />
-          )}
-        </div>
-      </div>
-    </>
-  );
-}
-
-/* =========================================================================
    ALPHABET SCRUBBER
    ========================================================================= */
-function AlphabetScrubber({ letters, letterMap, jumpTo, onSearchOpen, onFavouritesOpen, favouritesActive }) {
+function AlphabetScrubber({ letters, letterMap, jumpTo, onSearchOpen }) {
   const [active, setActive] = useState(null);
   const indicatorRef = useRef(null);
   const stripRef = useRef(null);
@@ -1495,29 +1015,6 @@ function AlphabetScrubber({ letters, letterMap, jumpTo, onSearchOpen, onFavourit
           transition: "background .15s",
         }}
       >
-        {/* Favourites icon */}
-        <button
-          onClick={onFavouritesOpen}
-          aria-label={favouritesActive ? "Back to library" : "Favourited tracks"}
-          aria-pressed={favouritesActive}
-          style={{
-            background: favouritesActive ? T.goldA15 : "none",
-            border: "none", cursor: "pointer",
-            color: favouritesActive ? T.gold : T.textDim, padding: "4px 0", marginBottom: 2,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            width: 18, lineHeight: 1, borderRadius: 4,
-            transition: "color .15s, background .15s",
-          }}
-          onMouseEnter={e => e.currentTarget.style.color = T.gold}
-          onMouseLeave={e => e.currentTarget.style.color = favouritesActive ? T.gold : T.textDim}
-        >
-          <svg width={Math.min(33, (itemH - 1) * 3)} height={Math.min(33, (itemH - 1) * 3)} viewBox="0 0 24 24" fill="currentColor">
-            {favouritesActive
-              ? <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-              : <path d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z"/>
-            }
-          </svg>
-        </button>
         {/* Search icon — 2× the letter font size */}
         <button
           onClick={onSearchOpen}
@@ -1972,7 +1469,6 @@ export default function App() {
   const [sectionKey, setSectionKey] = useState(null);
   const [showPlex, setShowPlex] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
-  const [showFavourites, setShowFavourites] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null); // { kind:'album'|'track', id, name, albumId? }
   const [deleteError, setDeleteError] = useState("");
@@ -1988,8 +1484,7 @@ export default function App() {
   useEffect(() => { trackShuffleRef.current = trackShuffle; }, [trackShuffle]);
 
   // Keep overlayOpenRef in sync so carousel keyboard handler ignores input when overlays are open
-  useEffect(() => { overlayOpenRef.current = showSearch || showPlex || showSettings || showFavourites || !!deleteConfirm; }, [showSearch, showPlex, showSettings, showFavourites, deleteConfirm]);
-  useEffect(() => { showFavouritesRef.current = showFavourites; }, [showFavourites]);
+  useEffect(() => { overlayOpenRef.current = showSearch || showPlex || showSettings || !!deleteConfirm; }, [showSearch, showPlex, showSettings, deleteConfirm]);
 
   // Build a Fisher-Yates shuffled order, placing currentIdx first
   const buildShuffleOrder = useCallback((len, currentIdx) => {
@@ -2007,14 +1502,7 @@ export default function App() {
   // Audio element for real playback
   const audioRef = useRef(null);
   const fadeTimerRef = useRef(null);
-  // Pending play from Favourites: { albumId, ratingKey } — consumed once tracks load and carousel settles
-  const pendingPlayRef = useRef(null);
-  // Favourites queue: { tracks: [...], idx: N } — set when playing from the Favourites panel
-  // so track-end advances through the fav list instead of the album track list
-  const favQueueRef = useRef(null);
-  const showFavouritesRef = useRef(false);
-  const playFromFavouritesRef = useRef(null);
-  // Always-current settled index — avoids stale closure in playFromFavourites when called from onended
+  // Always-current settled index — avoids stale closure in audio.onended
   const settledRef = useRef(settled);
   settledRef.current = settled;
 
@@ -2135,17 +1623,6 @@ export default function App() {
     const audio = audioRef.current;
     if (!audio) return;
     audio.onended = () => {
-      // While Favourites is open, advance through the fav queue instead of the album
-      if (showFavouritesRef.current && favQueueRef.current) {
-        const { tracks: favTracks, idx } = favQueueRef.current;
-        const nextIdx = idx + 1;
-        if (nextIdx < favTracks.length) {
-          playFromFavouritesRef.current?.(favTracks[nextIdx], favTracks);
-        } else {
-          setPlaying(false);
-        }
-        return;
-      }
       if (trackShuffleRef.current) {
         const order = shuffleOrderRef.current;
         const nextPos = shufflePosRef.current + 1;
@@ -2236,11 +1713,6 @@ export default function App() {
     navigator.mediaSession.setActionHandler("play",  () => setPlaying(true));
     navigator.mediaSession.setActionHandler("pause", () => setPlaying(false));
     navigator.mediaSession.setActionHandler("nexttrack", () => {
-      if (showFavouritesRef.current && favQueueRef.current) {
-        const { tracks: fq, idx } = favQueueRef.current;
-        if (idx + 1 < fq.length) playFromFavouritesRef.current?.(fq[idx + 1], fq);
-        return;
-      }
       setTrackIdx(ti => {
         if (ti + 1 >= tracks.length) {
           if (continuousPlay) { advanceToNextAlbum(); return 0; }
@@ -2250,11 +1722,6 @@ export default function App() {
       });
     });
     navigator.mediaSession.setActionHandler("previoustrack", () => {
-      if (showFavouritesRef.current && favQueueRef.current) {
-        const { tracks: fq, idx } = favQueueRef.current;
-        if (idx > 0) playFromFavouritesRef.current?.(fq[idx - 1], fq);
-        return;
-      }
       setTrackIdx(ti => Math.max(0, ti - 1));
     });
     return () => {
@@ -2326,94 +1793,6 @@ export default function App() {
     else hideTrack(id);
   }, [deleteConfirm, serverUrl, token, hideAlbum, hideTrack]);
 
-  const toggleFavourite = useCallback(() => {
-    if (!album || !serverUrl || !token) return;
-    const newRating = album.userRating > 0 ? 0 : 10;
-    setAlbums(prev => prev.map(a => a.id === album.id ? { ...a, userRating: newRating } : a));
-    plexRate(serverUrl, token, album.id, newRating).catch(() => {
-      setAlbums(prev => prev.map(a => a.id === album.id ? { ...a, userRating: album.userRating } : a));
-    });
-  }, [album, serverUrl, token]);
-
-  const toggleTrackFavourite = useCallback((albumId, ratingKey) => {
-    if (!serverUrl || !token) return;
-    setPlexTracks(prev => {
-      const list = prev[albumId] || [];
-      const t = list.find(x => x.ratingKey === ratingKey);
-      if (!t) return prev;
-      const newRating = t.userRating > 0 ? 0 : 10;
-      const updated = list.map(x => x.ratingKey === ratingKey ? { ...x, userRating: newRating } : x);
-      plexRate(serverUrl, token, ratingKey, newRating).catch(() => {
-        setPlexTracks(p => ({ ...p, [albumId]: (p[albumId] || []).map(x => x.ratingKey === ratingKey ? { ...x, userRating: t.userRating } : x) }));
-      });
-      return { ...prev, [albumId]: updated };
-    });
-  }, [serverUrl, token]);
-
-  const playFromFavourites = useCallback((favTrack, sortedFavTracks) => {
-    // Stay in Favourites view — carousel navigates silently in the background
-    if (sortedFavTracks) {
-      const idx = sortedFavTracks.findIndex(t => t.ratingKey === favTrack.ratingKey);
-      favQueueRef.current = { tracks: sortedFavTracks, idx };
-    }
-    const albumIdx = visibleAlbums.findIndex(a => a.id === favTrack.albumId);
-    if (albumIdx === -1) return;
-
-    // Use settledRef.current (always current) instead of the closure-captured settled to avoid
-    // a stale-closure race between the RAF tick (which updates settled state) and audio.onended
-    // (a native browser event that fires before the React effect can update this callback's ref).
-    const currentSettled = settledRef.current;
-
-    // If already on this album and tracks are loaded, play directly.
-    // jumpTo is a no-op when the carousel is already settled there, so
-    // the pending-play effect would never fire — we must trigger play here.
-    if (visibleAlbums[currentSettled]?.id === favTrack.albumId) {
-      const loaded = plexTracks[favTrack.albumId];
-      if (loaded?.length) {
-        const ti = loaded.findIndex(t => t.ratingKey === favTrack.ratingKey);
-        if (ti !== -1) {
-          setTrackIdx(ti);
-          setProgress(0);
-          setPlaying(true);
-          return;
-        }
-      }
-    }
-
-    pendingPlayRef.current = { albumId: favTrack.albumId, ratingKey: favTrack.ratingKey };
-    jumpTo(albumIdx);
-
-    // If jumpTo targets the already-settled album (stale-settled caused the fast path above to
-    // be skipped), the pending-play effect will never fire because settled won't change and
-    // plexTracks[albumId] is already loaded. Consume immediately in that case.
-    if (albumIdx === currentSettled) {
-      const loadedTracks = plexTracks[favTrack.albumId];
-      if (loadedTracks?.length) {
-        const ti = loadedTracks.findIndex(t => t.ratingKey === favTrack.ratingKey);
-        pendingPlayRef.current = null;
-        if (ti !== -1) {
-          setTrackIdx(ti);
-          setProgress(0);
-          setPlaying(true);
-        }
-      }
-    }
-  }, [visibleAlbums, jumpTo, plexTracks]);
-
-  useEffect(() => { playFromFavouritesRef.current = playFromFavourites; }, [playFromFavourites]);
-
-  const onFavPrev = useCallback(() => {
-    if (!favQueueRef.current) return;
-    const { tracks: favTracks, idx } = favQueueRef.current;
-    if (idx > 0) playFromFavourites(favTracks[idx - 1], favTracks);
-  }, [playFromFavourites]);
-
-  const onFavNext = useCallback(() => {
-    if (!favQueueRef.current) return;
-    const { tracks: favTracks, idx } = favQueueRef.current;
-    if (idx + 1 < favTracks.length) playFromFavourites(favTracks[idx + 1], favTracks);
-  }, [playFromFavourites]);
-
   // Keyboard shortcuts: "/" search, "r" random, "f" favourite, "e" edit mode, "," prev track, "." next track
   useEffect(() => {
     const h = (e) => {
@@ -2425,34 +1804,21 @@ export default function App() {
         setShowSearch(true);
       }
       if (e.key === "r" && !showSearch && !showPlex) randomAlbum();
-      if (e.key === "f" && !showSearch && !showPlex) toggleFavourite();
       if (e.key === "e" && !showSearch && !showPlex && connected) setEditMode(m => !m);
-      if (e.key === "l" && !showSearch && !showPlex && !showFavourites && connected && sectionKey) setShowFavourites(true);
-      if (e.key === "Escape" && showFavourites) { setShowFavourites(false); return; }
       if (e.key === "," && !showSearch && !showPlex) {
-        if (showFavourites && favQueueRef.current) {
-          const { tracks: fq, idx } = favQueueRef.current;
-          if (idx > 0) playFromFavouritesRef.current?.(fq[idx - 1], fq);
-        } else {
-          setTrackIdx(i => Math.max(0, i - 1));
-          setProgress(0);
-          setPlaying(true);
-        }
+        setTrackIdx(i => Math.max(0, i - 1));
+        setProgress(0);
+        setPlaying(true);
       }
       if (e.key === "." && !showSearch && !showPlex) {
-        if (showFavourites && favQueueRef.current) {
-          const { tracks: fq, idx } = favQueueRef.current;
-          if (idx + 1 < fq.length) playFromFavouritesRef.current?.(fq[idx + 1], fq);
-        } else {
-          setTrackIdx(i => Math.min(tracks.length - 1, i + 1));
-          setProgress(0);
-          setPlaying(true);
-        }
+        setTrackIdx(i => Math.min(tracks.length - 1, i + 1));
+        setProgress(0);
+        setPlaying(true);
       }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [showSearch, showPlex, showFavourites, randomAlbum, toggleFavourite, tracks.length, deleteConfirm, connected, sectionKey]);
+  }, [showSearch, showPlex, randomAlbum, tracks.length, deleteConfirm, connected, sectionKey]);
 
   // Reset on album change (skip stopping playback if continuous play or favourites triggered the advance)
   const prevSettled = useRef(settled);
@@ -2464,34 +1830,12 @@ export default function App() {
       if (continuousAdvancing.current) {
         continuousAdvancing.current = false;
         // Keep playing=true so audio src effect picks up the new track and plays it
-      } else if (pendingPlayRef.current) {
-        // Favourites playback pending — silence audio during carousel sweep; pending-play effect will restart it
-        setPlaying(false);
-        if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
       } else {
         setPlaying(false);
         if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
       }
     }
   }, [settled]);
-
-  // Consume pendingPlayRef once the carousel has settled on the target album and tracks are loaded.
-  // IMPORTANT: this effect must run AFTER the album-change effect above so that its state updates
-  // (setTrackIdx/setPlaying) are applied last and win over the album-change resets.
-  useEffect(() => {
-    if (!pendingPlayRef.current) return;
-    const { albumId, ratingKey } = pendingPlayRef.current;
-    if (visibleAlbums[settled]?.id !== albumId) return;
-    const loadedTracks = plexTracks[albumId];
-    if (!loadedTracks?.length) return;
-    const idx = loadedTracks.findIndex(t => t.ratingKey === ratingKey);
-    pendingPlayRef.current = null;
-    if (idx !== -1) {
-      setTrackIdx(idx);
-      setProgress(0);
-      setPlaying(true);
-    }
-  }, [settled, plexTracks, visibleAlbums]);
 
 
   async function handleConnect(url, tok) {
@@ -2681,7 +2025,7 @@ export default function App() {
           </div>
         )}
 
-        {!showFavourites && visibleAlbums.length > 0 && (
+        {visibleAlbums.length > 0 && (
           <div style={{ display:"flex", alignItems:"center", justifyContent:"center", padding:"0 0 2px", position:"relative", zIndex:1 }}>
             {editMode
               ? <span style={{ fontFamily:"'DM Sans',sans-serif", fontSize:11, color:T.red, letterSpacing:".08em", textTransform:"uppercase", opacity:.7 }}>
@@ -2700,75 +2044,38 @@ export default function App() {
           </div>
         )}
 
-        {!showFavourites && (
-          <CoverFlow
+        <CoverFlow
             albums={visibleAlbums} renderPos={renderPos} settled={settled}
             onWheel={onWheel} onPointerDown={onPointerDown}
             onPointerMove={onPointerMove} onPointerUp={onPointerUp}
             jumpTo={jumpTo}
             editMode={editMode}
             onRemoveAlbum={a => setDeleteConfirm({ kind: "album", id: a.id, name: a.title })}
-          />
-        )}
+        />
 
-        {!showFavourites && (
-          <div style={{ padding:"6px 0 14px", flexShrink:0 }}>
-            <PlayerControls
-              isPlaying={playing}
-              onPlayPause={() => setPlaying(p => !p)}
-              onPrev={() => {
-                if (trackShuffle) {
-                  const prevPos = shufflePosRef.current - 1;
-                  if (prevPos >= 0) { shufflePosRef.current = prevPos; setTrackIdx(shuffleOrderRef.current[prevPos]); setProgress(0); }
-                } else {
-                  if (trackIdx > 0) { setTrackIdx(i => i-1); setProgress(0); }
-                }
-              }}
-              onNext={() => {
-                if (trackShuffle) {
-                  const nextPos = shufflePosRef.current + 1;
-                  if (nextPos < shuffleOrderRef.current.length) { shufflePosRef.current = nextPos; setTrackIdx(shuffleOrderRef.current[nextPos]); setProgress(0); }
-                } else {
-                  if (trackIdx < tracks.length-1) { setTrackIdx(i => i+1); setProgress(0); }
-                }
-              }}
-              isShuffling={trackShuffle}
-              onShuffleTracks={toggleTrackShuffle}
-              currentTrack={track} album={album} progress={progress} audioTime={audioTime}
-              isFavourite={album?.userRating > 0}
-              onToggleFavourite={toggleFavourite}
-              onSeek={pct => {
-                setProgress(pct);
-                if (connected && audioRef.current?.duration) {
-                  audioRef.current.currentTime = (pct / 100) * audioRef.current.duration;
-                }
-              }}
-            />
-          </div>
-        )}
-
-        {showFavourites && connected && sectionKey ? (
-          <FavouritesPanel
-            serverUrl={serverUrl}
-            token={token}
-            sectionKey={sectionKey}
-            onPlay={playFromFavourites}
-            onClose={() => { setShowFavourites(false); favQueueRef.current = null; }}
-            currentRatingKey={track?.ratingKey}
-            currentTrack={track ? {
-              ratingKey: track.ratingKey,
-              title: track.title,
-              albumTitle: album?.title || "",
-              artist: album?.artist || "",
-              thumbUrl: album?.thumbUrl || null,
-              albumId: album?.id,
-            } : null}
-            playing={playing}
+        <div style={{ padding:"6px 0 14px", flexShrink:0 }}>
+          <PlayerControls
+            isPlaying={playing}
             onPlayPause={() => setPlaying(p => !p)}
-            onFavPrev={onFavPrev}
-            onFavNext={onFavNext}
-            progress={progress}
-            audioTime={audioTime}
+            onPrev={() => {
+              if (trackShuffle) {
+                const prevPos = shufflePosRef.current - 1;
+                if (prevPos >= 0) { shufflePosRef.current = prevPos; setTrackIdx(shuffleOrderRef.current[prevPos]); setProgress(0); }
+              } else {
+                if (trackIdx > 0) { setTrackIdx(i => i-1); setProgress(0); }
+              }
+            }}
+            onNext={() => {
+              if (trackShuffle) {
+                const nextPos = shufflePosRef.current + 1;
+                if (nextPos < shuffleOrderRef.current.length) { shufflePosRef.current = nextPos; setTrackIdx(shuffleOrderRef.current[nextPos]); setProgress(0); }
+              } else {
+                if (trackIdx < tracks.length-1) { setTrackIdx(i => i+1); setProgress(0); }
+              }
+            }}
+            isShuffling={trackShuffle}
+            onShuffleTracks={toggleTrackShuffle}
+            currentTrack={track} album={album} progress={progress} audioTime={audioTime}
             onSeek={pct => {
               setProgress(pct);
               if (connected && audioRef.current?.duration) {
@@ -2776,28 +2083,27 @@ export default function App() {
               }
             }}
           />
-        ) : (
-          <div style={{ flex:1, overflow:"hidden", paddingBottom:20 }}>
-            <TrackList
-              tracks={tracks}
-              currentTrackIndex={trackIdx}
-              onSelectTrack={i => {
-                setTrackIdx(i);
-                setProgress(0);
-                setPlaying(true);
-              }}
-              onToggleTrackFavourite={connected && album ? (ratingKey => toggleTrackFavourite(album.id, ratingKey)) : null}
-              hotTrackRatingKeys={HOT_TRACKS_ENABLED && connected
-                ? new Set(getHotTracks(tracks, { fallbackToViews: true }).map(t => t.ratingKey))
-                : null}
-              editMode={editMode}
-              onHideTrack={connected && album ? ((ratingKey, name) => setDeleteConfirm({ kind: "track", id: ratingKey, name, albumId: album.id })) : null}
-            />
-          </div>
-        )}
+        </div>
 
-        {connected && letters.length > 1 && !showFavourites && (
-          <AlphabetScrubber letters={letters} letterMap={letterMap} jumpTo={jumpTo} onSearchOpen={() => setShowSearch(true)} onFavouritesOpen={() => setShowFavourites(f => !f)} favouritesActive={showFavourites} />
+        <div style={{ flex:1, overflow:"hidden", paddingBottom:20 }}>
+          <TrackList
+            tracks={tracks}
+            currentTrackIndex={trackIdx}
+            onSelectTrack={i => {
+              setTrackIdx(i);
+              setProgress(0);
+              setPlaying(true);
+            }}
+            hotTrackRatingKeys={HOT_TRACKS_ENABLED && connected
+              ? new Set(getHotTracks(tracks, { fallbackToViews: true }).map(t => t.ratingKey))
+              : null}
+            editMode={editMode}
+            onHideTrack={connected && album ? ((ratingKey, name) => setDeleteConfirm({ kind: "track", id: ratingKey, name, albumId: album.id })) : null}
+          />
+        </div>
+
+        {connected && letters.length > 1 && (
+          <AlphabetScrubber letters={letters} letterMap={letterMap} jumpTo={jumpTo} onSearchOpen={() => setShowSearch(true)} />
         )}
 
         {showSearch && visibleAlbums.length > 0 && (
