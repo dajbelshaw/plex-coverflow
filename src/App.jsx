@@ -615,7 +615,7 @@ function fmtTime(s) {
   return `${m}:${sec}`;
 }
 
-function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onShuffleTracks, isShuffling, currentTrack, album, progress, onSeek, audioTime }) {
+function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onShuffleTracks, isShuffling, repeatMode, onCycleRepeat, currentTrack, album, progress, onSeek, audioTime }) {
   const trackName = typeof currentTrack === "string" ? currentTrack : currentTrack?.title;
   return (
     <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10, padding:"0 40px" }}>
@@ -656,13 +656,28 @@ function PlayerControls({ isPlaying, onPlayPause, onPrev, onNext, onShuffleTrack
             <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
           </button>
         </div>
-        <button onClick={onShuffleTracks} style={{
-          ...bS, width:44, height:44,
-          color: isShuffling ? T.gold : T.textDim,
-          borderColor: isShuffling ? T.gold : "rgba(255,255,255,.1)",
-        }} aria-label={isShuffling ? "Shuffle on" : "Shuffle off"} aria-pressed={isShuffling}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
-        </button>
+        <div style={{ display:"flex", alignItems:"center", gap:16 }}>
+          <button onClick={onShuffleTracks} style={{
+            ...bS, width:44, height:44,
+            color: isShuffling ? T.gold : T.textDim,
+            borderColor: isShuffling ? T.gold : "rgba(255,255,255,.1)",
+          }} aria-label={isShuffling ? "Shuffle on" : "Shuffle off"} aria-pressed={isShuffling}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
+          </button>
+          <button onClick={onCycleRepeat} style={{
+            ...bS, width:44, height:44,
+            color: repeatMode === "off" ? T.textDim : T.gold,
+            borderColor: repeatMode === "off" ? "rgba(255,255,255,.1)" : T.gold,
+          }} aria-label={
+            repeatMode === "one" ? "Repeat one track" : repeatMode === "album" ? "Repeat album" : "Repeat off"
+          } aria-pressed={repeatMode !== "off"} title={
+            repeatMode === "one" ? "Repeat track" : repeatMode === "album" ? "Repeat album" : "Repeat off"
+          }>
+            {repeatMode === "one"
+              ? <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2v-4h-1l-2 1v1h1.5v2H13z"/></svg>
+              : <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1460,12 +1475,19 @@ export default function App() {
 
   const [playing, setPlaying] = useState(false);
   const [trackIdx, setTrackIdx] = useState(0);
+  // Always-current trackIdx for occlusion-proof advance inside audio.onended
+  const trackIdxRef = useRef(0);
+  trackIdxRef.current = trackIdx;
   const [progress, setProgress] = useState(0);
   const [audioTime, setAudioTime] = useState({ current: 0, duration: 0 });
   const [trackShuffle, setTrackShuffle] = useState(false);
   const trackShuffleRef = useRef(false);
   const shuffleOrderRef = useRef([]);
   const shufflePosRef = useRef(0);
+  // Repeat mode: "off" (play album through) | "album" (loop album) | "one" (loop track)
+  const [repeatMode, setRepeatMode] = useState(() => localStorage.getItem("overflow_repeat") || "off");
+  const repeatModeRef = useRef(repeatMode);
+  repeatModeRef.current = repeatMode;
   const [sectionKey, setSectionKey] = useState(null);
   const [showPlex, setShowPlex] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -1475,6 +1497,8 @@ export default function App() {
 
   // Settings (persisted to localStorage)
   const [continuousPlay, setContinuousPlay] = useState(() => localStorage.getItem("overflow_continuous") === "true");
+  const continuousPlayRef = useRef(continuousPlay);
+  continuousPlayRef.current = continuousPlay;
   const [nextAlbumMode, setNextAlbumMode] = useState(() => localStorage.getItem("overflow_nextmode") || "sequential");
   const [showSettings, setShowSettings] = useState(false);
   // Flag: set before calling jumpTo during continuous advance, cleared in album-change effect
@@ -1551,6 +1575,29 @@ export default function App() {
   const tracks = allTracks.filter(t => typeof t === "string" || !hiddenTrackIds.has(t.ratingKey));
   const track = tracks[trackIdx] || null;
 
+  // Live refs so imperative advance inside audio.onended always sees current data
+  const tracksRef = useRef(tracks);       tracksRef.current = tracks;
+  const serverUrlRef = useRef(serverUrl); serverUrlRef.current = serverUrl;
+  const tokenRef = useRef(token);         tokenRef.current = token;
+
+  // Imperatively load + play a track by index. onended uses this so advancement
+  // does not depend on the React render→effect cycle, which macOS App Nap throttles
+  // when the window sits on a background Space (the cause of tracks not advancing).
+  const playTrackAt = useCallback((idx) => {
+    const audio = audioRef.current;
+    const t = tracksRef.current[idx];
+    if (!audio || !t?.partKey) { setPlaying(false); return; }
+    if (fadeTimerRef.current) { clearInterval(fadeTimerRef.current); fadeTimerRef.current = null; }
+    audio.volume = 1;
+    audio.loop = repeatModeRef.current === "one";
+    audio.src = plexProxyUrl(serverUrlRef.current, `${t.partKey}?X-Plex-Token=${tokenRef.current}`);
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
+    setProgress(0);
+    setTrackIdx(idx);
+    setPlaying(true);
+  }, []);
+
   const toggleTrackShuffle = useCallback(() => {
     setTrackShuffle(s => {
       if (!s) buildShuffleOrder(tracks.length, trackIdx);
@@ -1561,6 +1608,15 @@ export default function App() {
   // Persist settings changes
   useEffect(() => { localStorage.setItem("overflow_continuous", String(continuousPlay)); }, [continuousPlay]);
   useEffect(() => { localStorage.setItem("overflow_nextmode", nextAlbumMode); }, [nextAlbumMode]);
+  // Persist repeat mode and apply native loop so toggling to "one" loops the current track immediately
+  useEffect(() => {
+    localStorage.setItem("overflow_repeat", repeatMode);
+    if (audioRef.current) audioRef.current.loop = repeatMode === "one";
+  }, [repeatMode]);
+
+  const cycleRepeat = useCallback(() => {
+    setRepeatMode(m => (m === "off" ? "album" : m === "album" ? "one" : "off"));
+  }, []);
 
   // Advance to next or random album (for continuous play)
   const advanceToNextAlbum = useCallback(() => {
@@ -1618,33 +1674,57 @@ export default function App() {
       .catch(() => {});
   }, [settled, connected, album?.id]);
 
-  // Keep onended up to date with current track list so last-track works correctly
+  // Natural forward progression (shuffle/sequential + end-of-album handling).
+  // Ref-based + stable so it works from onended and from manual next while the
+  // window is on a background macOS Space (App Nap throttles the React cycle).
+  const advanceTrack = useCallback(() => {
+    const endOfAlbum = () => {
+      if (repeatModeRef.current === "album") return true;   // wrap handled by caller
+      if (continuousPlayRef.current) { advanceToNextAlbum(); return false; }
+      setPlaying(false); return false;
+    };
+    if (trackShuffleRef.current) {
+      const nextPos = shufflePosRef.current + 1;
+      if (nextPos < shuffleOrderRef.current.length) {
+        shufflePosRef.current = nextPos;
+        playTrackAt(shuffleOrderRef.current[nextPos]);
+      } else if (endOfAlbum()) {
+        buildShuffleOrder(tracksRef.current.length, 0); // reshuffle for next album loop
+        shufflePosRef.current = 0;
+        playTrackAt(shuffleOrderRef.current[0] ?? 0);
+      } else {
+        shufflePosRef.current = 0;
+      }
+    } else {
+      const next = trackIdxRef.current + 1;
+      if (next < tracksRef.current.length) playTrackAt(next);
+      else if (endOfAlbum()) playTrackAt(0);
+      else setTrackIdx(0);
+    }
+  }, [advanceToNextAlbum, buildShuffleOrder, playTrackAt]);
+
+  // Backward step (restarts current track if already at the start).
+  const retreatTrack = useCallback(() => {
+    if (trackShuffleRef.current) {
+      const prevPos = shufflePosRef.current - 1;
+      if (prevPos >= 0) { shufflePosRef.current = prevPos; playTrackAt(shuffleOrderRef.current[prevPos]); }
+      else playTrackAt(shuffleOrderRef.current[0] ?? trackIdxRef.current);
+    } else {
+      const prev = trackIdxRef.current - 1;
+      playTrackAt(prev >= 0 ? prev : 0);
+    }
+  }, [playTrackAt]);
+
+  // Keep onended current. repeat-one loops natively (audio.loop); the guard below
+  // covers the case where loop was cleared. All other ends defer to advanceTrack.
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
     audio.onended = () => {
-      if (trackShuffleRef.current) {
-        const order = shuffleOrderRef.current;
-        const nextPos = shufflePosRef.current + 1;
-        if (nextPos < order.length) {
-          shufflePosRef.current = nextPos;
-          setTrackIdx(order[nextPos]);
-        } else {
-          if (continuousPlay) { advanceToNextAlbum(); }
-          else setPlaying(false);
-          shufflePosRef.current = 0;
-        }
-      } else {
-        setTrackIdx(ti => {
-          if (ti + 1 >= tracks.length) {
-            if (continuousPlay) { advanceToNextAlbum(); return 0; }
-            setPlaying(false); return 0;
-          }
-          return ti + 1;
-        });
-      }
+      if (repeatModeRef.current === "one") { playTrackAt(trackIdxRef.current); return; }
+      advanceTrack();
     };
-  }, [tracks.length, continuousPlay, advanceToNextAlbum]);
+  }, [advanceTrack, playTrackAt]);
 
   // Rebuild shuffle order when album changes (new track list)
   useEffect(() => {
@@ -1712,24 +1792,14 @@ export default function App() {
     if (!("mediaSession" in navigator)) return;
     navigator.mediaSession.setActionHandler("play",  () => setPlaying(true));
     navigator.mediaSession.setActionHandler("pause", () => setPlaying(false));
-    navigator.mediaSession.setActionHandler("nexttrack", () => {
-      setTrackIdx(ti => {
-        if (ti + 1 >= tracks.length) {
-          if (continuousPlay) { advanceToNextAlbum(); return 0; }
-          setPlaying(false); return 0;
-        }
-        return ti + 1;
-      });
-    });
-    navigator.mediaSession.setActionHandler("previoustrack", () => {
-      setTrackIdx(ti => Math.max(0, ti - 1));
-    });
+    navigator.mediaSession.setActionHandler("nexttrack", () => advanceTrack());
+    navigator.mediaSession.setActionHandler("previoustrack", () => retreatTrack());
     return () => {
       ["play","pause","nexttrack","previoustrack"].forEach(a =>
         navigator.mediaSession.setActionHandler(a, null)
       );
     };
-  }, [tracks.length, continuousPlay, advanceToNextAlbum]);
+  }, [advanceTrack, retreatTrack]);
 
   // MediaSession: update Now Playing metadata when track/album changes
   useEffect(() => {
@@ -1805,20 +1875,12 @@ export default function App() {
       }
       if (e.key === "r" && !showSearch && !showPlex) randomAlbum();
       if (e.key === "e" && !showSearch && !showPlex && connected) setEditMode(m => !m);
-      if (e.key === "," && !showSearch && !showPlex) {
-        setTrackIdx(i => Math.max(0, i - 1));
-        setProgress(0);
-        setPlaying(true);
-      }
-      if (e.key === "." && !showSearch && !showPlex) {
-        setTrackIdx(i => Math.min(tracks.length - 1, i + 1));
-        setProgress(0);
-        setPlaying(true);
-      }
+      if (e.key === "," && !showSearch && !showPlex) retreatTrack();
+      if (e.key === "." && !showSearch && !showPlex) advanceTrack();
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [showSearch, showPlex, randomAlbum, tracks.length, deleteConfirm, connected, sectionKey]);
+  }, [showSearch, showPlex, randomAlbum, deleteConfirm, connected, sectionKey, advanceTrack, retreatTrack]);
 
   // Reset on album change (skip stopping playback if continuous play or favourites triggered the advance)
   const prevSettled = useRef(settled);
@@ -2057,24 +2119,12 @@ export default function App() {
           <PlayerControls
             isPlaying={playing}
             onPlayPause={() => setPlaying(p => !p)}
-            onPrev={() => {
-              if (trackShuffle) {
-                const prevPos = shufflePosRef.current - 1;
-                if (prevPos >= 0) { shufflePosRef.current = prevPos; setTrackIdx(shuffleOrderRef.current[prevPos]); setProgress(0); }
-              } else {
-                if (trackIdx > 0) { setTrackIdx(i => i-1); setProgress(0); }
-              }
-            }}
-            onNext={() => {
-              if (trackShuffle) {
-                const nextPos = shufflePosRef.current + 1;
-                if (nextPos < shuffleOrderRef.current.length) { shufflePosRef.current = nextPos; setTrackIdx(shuffleOrderRef.current[nextPos]); setProgress(0); }
-              } else {
-                if (trackIdx < tracks.length-1) { setTrackIdx(i => i+1); setProgress(0); }
-              }
-            }}
+            onPrev={retreatTrack}
+            onNext={advanceTrack}
             isShuffling={trackShuffle}
             onShuffleTracks={toggleTrackShuffle}
+            repeatMode={repeatMode}
+            onCycleRepeat={cycleRepeat}
             currentTrack={track} album={album} progress={progress} audioTime={audioTime}
             onSeek={pct => {
               setProgress(pct);

@@ -4,6 +4,16 @@ All notable changes to Overflow are listed here. Entries are written for people 
 
 ---
 
+## 2.7.0 — 2026-06-22
+
+### New
+- **Repeat modes.** A repeat button next to shuffle cycles through three states: off (play the album through, one track after another, then stop), repeat album (loop the whole album), and repeat one track. Your choice is remembered between sessions.
+
+### Fixed
+- **Playback now advances on other Spaces.** When the app was playing on a different macOS desktop Space to the one you were working on, the current track would stall and repeat until you pressed next. Tracks now advance reliably even while the window is in the background.
+
+---
+
 ## 2.0.0 — 2026-03-24
 
 ### New
